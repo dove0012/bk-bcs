@@ -72,18 +72,19 @@ func (c *CloudInfoManager) SyncClusterCloudInfo(cls *cmproto.Cluster,
 	}
 
 	cls.KubeConfig = kubeConfig
-	cls.SystemID = cls.ClusterName
+	cls.SystemID = *cluster.Name
+	cls.VpcID = *cluster.ResourcesVpcConfig.VpcId
 
 	// cluster cloud basic setting
-	clusterBasicSettingByGKE(cls, cluster)
+	clusterBasicSettingByEKS(cls, cluster)
 
 	// cluster cloud network setting
-	clusterNetworkSettingByGKE(cls, cluster)
+	clusterNetworkSettingByEKS(cls, cluster)
 
 	return nil
 }
 
-func clusterBasicSettingByGKE(cls *cmproto.Cluster, cluster *eks.Cluster) {
+func clusterBasicSettingByEKS(cls *cmproto.Cluster, cluster *eks.Cluster) {
 	cls.ClusterBasicSettings = &cmproto.ClusterBasicSetting{
 		Version:     *cluster.Version,
 		VersionName: *cluster.Version,
@@ -93,7 +94,7 @@ func clusterBasicSettingByGKE(cls *cmproto.Cluster, cluster *eks.Cluster) {
 	// }
 }
 
-func clusterNetworkSettingByGKE(cls *cmproto.Cluster, cluster *eks.Cluster) {
+func clusterNetworkSettingByEKS(cls *cmproto.Cluster, cluster *eks.Cluster) {
 	cls.NetworkSettings = &cmproto.NetworkSetting{
 		ClusterIPv4CIDR: *cluster.KubernetesNetworkConfig.ServiceIpv4Cidr,
 		ServiceIPv4CIDR: *cluster.KubernetesNetworkConfig.ServiceIpv6Cidr,
