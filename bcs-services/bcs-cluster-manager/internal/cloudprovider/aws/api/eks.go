@@ -8,6 +8,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/eks"
 )
 
+// EksClient eks client
+type EksClient struct {
+	*eks.EKS
+	Session *session.Session
+}
+
 // NewEksClient init Eks client
 func NewEksClient(opt *cloudprovider.CommonOption) (*EksClient, error) {
 	if opt == nil || opt.Account == nil || len(opt.Account.SecretID) == 0 || len(opt.Account.SecretKey) == 0 {
@@ -32,12 +38,7 @@ func NewEksClient(opt *cloudprovider.CommonOption) (*EksClient, error) {
 	}, nil
 }
 
-type EksClient struct {
-	*eks.EKS
-	Session *session.Session
-}
-
-// ListTKECluster get tke cluster list, region parameter init tke client
+// ListEksCluster get tke cluster list, region parameter init tke client
 func (cli *EksClient) ListEksCluster() ([]*string, error) {
 	if cli == nil {
 		return nil, cloudprovider.ErrServerIsNil
@@ -52,6 +53,7 @@ func (cli *EksClient) ListEksCluster() ([]*string, error) {
 	return output.Clusters, nil
 }
 
+// GetEksCluster get eks cluster
 func (cli *EksClient) GetEksCluster(clusterName string) (*eks.Cluster, error) {
 	if cli == nil {
 		return nil, cloudprovider.ErrServerIsNil

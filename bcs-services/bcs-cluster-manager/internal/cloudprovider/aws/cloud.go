@@ -89,9 +89,6 @@ func clusterBasicSettingByEKS(cls *cmproto.Cluster, cluster *eks.Cluster) {
 		Version:     *cluster.Version,
 		VersionName: *cluster.Version,
 	}
-	// if cluster.NodeConfig != nil {
-	// 	cls.ClusterBasicSettings.OS = cluster.NodeConfig.ImageType
-	// }
 }
 
 func clusterNetworkSettingByEKS(cls *cmproto.Cluster, cluster *eks.Cluster) {
@@ -99,7 +96,4 @@ func clusterNetworkSettingByEKS(cls *cmproto.Cluster, cluster *eks.Cluster) {
 		ClusterIPv4CIDR: *cluster.KubernetesNetworkConfig.ServiceIpv4Cidr,
 		ServiceIPv4CIDR: *cluster.KubernetesNetworkConfig.ServiceIpv6Cidr,
 	}
-	// if cluster.DefaultMaxPodsConstraint != nil {
-	// 	cls.NetworkSettings.MaxNodePodNum = uint32(cluster.DefaultMaxPodsConstraint.MaxPodsPerNode)
-	// }
 }

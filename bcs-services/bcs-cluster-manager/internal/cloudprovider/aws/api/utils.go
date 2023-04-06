@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/aws-iam-authenticator/pkg/token"
 )
 
+// GetClusterKubeConfig get eks cluster kebeconfig
 func GetClusterKubeConfig(sess *session.Session, cluster *eks.Cluster) (string, error) {
 	generator, err := token.NewGenerator(false, false)
 	if err != nil {

@@ -43,6 +43,7 @@ func newtask() *Task {
 	return task
 }
 
+// Task eks cluster task struct
 type Task struct {
 	works map[string]interface{}
 }
