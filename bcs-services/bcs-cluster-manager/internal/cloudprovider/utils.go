@@ -30,6 +30,7 @@ import (
 	storeopt "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/store/options"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/types"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/utils"
+	k8scorev1 "k8s.io/api/core/v1"
 )
 
 var (
@@ -430,6 +431,43 @@ func UpdateClusterSystemID(clusterID string, systemID string) error {
 	err = GetStorageModel().UpdateCluster(context.Background(), cluster)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// ImportClusterNodesToCM writes cluster nodes to DB
+func ImportClusterNodesToCM(ctx context.Context, nodes []k8scorev1.Node, clusterID string) error {
+	for _, n := range nodes {
+		innerIP := ""
+		for _, v := range n.Status.Addresses {
+			if v.Type == k8scorev1.NodeInternalIP {
+				innerIP = v.Address
+				break
+			}
+		}
+		if innerIP == "" {
+			continue
+		}
+		node, err := GetStorageModel().GetNodeByIP(ctx, innerIP)
+		if err != nil && !errors.Is(err, drivers.ErrTableRecordNotFound) {
+			blog.Errorf("importClusterNodes GetNodeByIP[%s] failed: %v", innerIP, err)
+			// no import node when found err
+			continue
+		}
+
+		if node == nil {
+			node = &proto.Node{
+				InnerIP:   innerIP,
+				Status:    common.StatusRunning,
+				ClusterID: clusterID,
+			}
+			err = GetStorageModel().CreateNode(ctx, node)
+			if err != nil {
+				blog.Errorf("importClusterNodes CreateNode[%s] failed: %v", innerIP, err)
+			}
+			continue
+		}
 	}
 
 	return nil

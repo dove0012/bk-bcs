@@ -1,0 +1,8 @@
+version: '3'
+services:
+  protoc:
+    image: proto:latest
+    volumes:
+      - "./:/proto"
+      - "../../third_party/:/third_party"
+    command: /bin/bash -c "cd /proto && protoc -I/third_party --proto_path=/proto --go_out=plugins=grpc:/proto --validate_out=lang=go:/proto --micro_out=/proto --grpc-gateway_out=allow_delete_body=true,logtostderr=true,register_func_suffix=Gw:/proto --swagger_out=allow_delete_body=true,logtostderr=true:/proto /proto/*.proto"

@@ -1601,6 +1601,10 @@ message Account {
     title: "clientSecret",
     description: "Azure Service Principal ClientSecret"
   }];
+  string hwCCEProjectID = 10[(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title: "hwCCEProjectID",
+    description: "huawei Cloud CCE 项目ID"
+  }];
 }
 
 // cloud account manage

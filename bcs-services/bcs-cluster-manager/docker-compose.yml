@@ -1,0 +1,7 @@
+version: '3'
+services:
+  build:
+    image: golang:1.18
+    volumes:
+      - "./:/build"
+    command: /bin/bash -c "cd /build && go env -w GOPROXY=https://goproxy.cn,direct && go mod tidy && go build"
