@@ -9347,6 +9347,8 @@ func (m *NodeTemplate) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for MaxPodsPerNode
+
 	if len(errors) > 0 {
 		return NodeTemplateMultiError(errors)
 	}

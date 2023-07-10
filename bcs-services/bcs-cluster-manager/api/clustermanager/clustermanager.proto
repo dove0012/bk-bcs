@@ -3070,6 +3070,10 @@ message NodeTemplate {
     title: "module",
     description: "节点池节点上下架时当前集群业务下转移模块信息"
   }];
+  uint32 maxPodsPerNode = 26[(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title: "maxPodsPerNode",
+    description: "每个节点的最大Pod数量"
+  }];
 }
 
 // ModuleInfo 业务模块信息,主要涉及到节点模块转移

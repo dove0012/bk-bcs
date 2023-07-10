@@ -1,6 +1,20 @@
+/*
+ * Tencent is pleased to support the open source community by making Blueking Container Service available.
+ * Copyright (C) 2019 THL A29 Limited, a Tencent company. All rights reserved.
+ * Licensed under the MIT License (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * http://opensource.org/licenses/MIT
+ * Unless required by applicable law or agreed to in writing, software distributed under
+ * the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied. See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
 package api
 
 import (
+	"fmt"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic"
 	cce "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cce/v3"
@@ -64,4 +78,149 @@ func (cli *CceClient) GetCceCluster(clusterID string) (*model.ShowClusterRespons
 	}
 
 	return rsp, nil
+}
+
+// ListClusterNodes get cluster all nodes
+func (cli *CceClient) ListClusterNodes(clusterId string) ([]model.Node, error) {
+	if cli == nil {
+		return nil, cloudprovider.ErrServerIsNil
+	}
+
+	rsp, err := cli.ListNodes(&model.ListNodesRequest{
+		ClusterId: clusterId,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return *rsp.Items, nil
+}
+
+// ListClusterNodePoolNodes get cluster node pool all nodes
+func (cli *CceClient) ListClusterNodePoolNodes(clusterId, nodePoolId string) ([]model.Node, error) {
+	nodes, err := cli.ListClusterNodes(clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	nodePoolNodes := make([]model.Node, 0)
+	for _, v := range nodes {
+		if id, ok := v.Metadata.Annotations["kubernetes.io/node-pool.id"]; ok {
+			if id == nodePoolId {
+				nodePoolNodes = append(nodePoolNodes, v)
+			}
+		}
+	}
+
+	return nodePoolNodes, nil
+}
+
+// CreateClusterNodePool create cluster node pool
+func (cli *CceClient) CreateClusterNodePool(req *model.CreateNodePoolRequest) (*model.CreateNodePoolResponse, error) {
+	if cli == nil {
+		return nil, cloudprovider.ErrServerIsNil
+	}
+
+	rsp, err := cli.CreateNodePool(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return rsp, nil
+}
+
+// UpdateDesiredNodes update node pool InitialNodeCount
+func (cli *CceClient) UpdateDesiredNodes(clusterId, nodePoolId string, nodeCount int32) (*model.UpdateNodePoolResponse, error) {
+	if cli == nil {
+		return nil, cloudprovider.ErrServerIsNil
+	}
+
+	var (
+		taintValue   = "unavailable"
+		userTagKey   = "bcs-node-pool"
+		userTagValue = nodePoolId
+	)
+
+	req := &model.UpdateNodePoolRequest{
+		ClusterId:  clusterId,
+		NodepoolId: nodePoolId,
+		Body: &model.NodePoolUpdate{
+			Metadata: &model.NodePoolMetadataUpdate{
+				Name: "bcs-node-pool",
+			},
+			Spec: &model.NodePoolSpecUpdate{
+				NodeTemplate: &model.NodeSpecUpdate{
+					Taints: []model.Taint{
+						{Key: "bcs-status", Value: &taintValue, Effect: model.GetTaintEffectEnum().NO_SCHEDULE},
+					},
+					K8sTags: map[string]string{},
+					UserTags: []model.UserTag{{
+						Key: &userTagKey, Value: &userTagValue,
+					}},
+				},
+				InitialNodeCount: nodeCount,
+				Autoscaling:      &model.NodePoolNodeAutoscaling{},
+			},
+		},
+	}
+	rsp, err := cli.UpdateNodePool(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return rsp, nil
+}
+
+// RemoveNodePoolNodes remove nodepool nodes
+func (cli *CceClient) RemoveNodePoolNodes(clusterId string, nodeIds []string, password string) error {
+	if len(nodeIds) == 0 {
+		return nil
+	}
+
+	pw, err := Crypt(password)
+	if err != nil {
+		return err
+	}
+
+	nodes := make([]model.NodeItem, 0)
+	for _, v := range nodeIds {
+		nodes = append(nodes, model.NodeItem{
+			Uid: v,
+		})
+	}
+
+	_, err = cli.RemoveNode(&model.RemoveNodeRequest{
+		ClusterId: clusterId,
+		Body: &model.RemoveNodesTask{
+			Spec: &model.RemoveNodesSpec{
+				Login: &model.Login{
+					UserPassword: &model.UserPassword{
+						Password: pw,
+					},
+				},
+				Nodes: nodes,
+			},
+		},
+	})
+
+	return err
+}
+
+// DeleteNodePoolNodes 删除节点池节点
+func (cli *CceClient) DeleteNodePoolNodes(cluster string, nodeIds []string) error {
+	if len(nodeIds) == 0 {
+		return nil
+	}
+
+	for _, nodeId := range nodeIds {
+		_, err := cli.DeleteNode(&model.DeleteNodeRequest{
+			ClusterId: cluster,
+			NodeId:    nodeId,
+		})
+		if err != nil {
+			return fmt.Errorf("删除节点[%s]失败, error: %s", nodeId, err)
+		}
+	}
+
+	return nil
 }
