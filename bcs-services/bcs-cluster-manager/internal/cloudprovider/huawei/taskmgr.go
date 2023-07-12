@@ -209,7 +209,7 @@ func (t *Task) BuildCreateNodeGroupTask(group *proto.NodeGroup, opt *cloudprovid
 	}
 	// generate taskName
 	taskName := fmt.Sprintf(createNodeGroupTaskTemplate, group.ClusterID, group.Name)
-	task.CommonParams["taskName"] = taskName
+	task.CommonParams[cloudprovider.TaskNameKey.String()] = taskName
 
 	// setting all steps details
 	// step1. call huawei create node group
@@ -223,9 +223,9 @@ func (t *Task) BuildCreateNodeGroupTask(group *proto.NodeGroup, opt *cloudprovid
 		TaskMethod: createCloudNodeGroupTask,
 		TaskName:   "创建 NodeGroup",
 	}
-	createStep.Params["ClusterID"] = group.ClusterID
-	createStep.Params["NodeGroupID"] = group.NodeGroupID
-	createStep.Params["CloudID"] = group.Provider
+	createStep.Params[cloudprovider.ClusterIDKey.String()] = group.ClusterID
+	createStep.Params[cloudprovider.NodeGroupIDKey.String()] = group.NodeGroupID
+	createStep.Params[cloudprovider.CloudIDKey.String()] = group.Provider
 
 	task.Steps[createCloudNodeGroupTask] = createStep
 	task.StepSequence = append(task.StepSequence, createCloudNodeGroupTask)
@@ -240,9 +240,9 @@ func (t *Task) BuildCreateNodeGroupTask(group *proto.NodeGroup, opt *cloudprovid
 		TaskMethod: checkCloudNodeGroupStatusTask,
 		TaskName:   "检测 NodeGroup 状态",
 	}
-	checkStep.Params["ClusterID"] = group.ClusterID
-	checkStep.Params["NodeGroupID"] = group.NodeGroupID
-	checkStep.Params["CloudID"] = group.Provider
+	checkStep.Params[cloudprovider.ClusterIDKey.String()] = group.ClusterID
+	checkStep.Params[cloudprovider.NodeGroupIDKey.String()] = group.NodeGroupID
+	checkStep.Params[cloudprovider.CloudIDKey.String()] = group.Provider
 
 	task.Steps[checkCloudNodeGroupStatusTask] = checkStep
 	task.StepSequence = append(task.StepSequence, checkCloudNodeGroupStatusTask)
@@ -257,9 +257,9 @@ func (t *Task) BuildCreateNodeGroupTask(group *proto.NodeGroup, opt *cloudprovid
 		TaskMethod: ensureAutoScalerTask,
 		TaskName:   "开启自动伸缩组件",
 	}
-	ensureCAStep.Params["ClusterID"] = group.ClusterID
-	ensureCAStep.Params["NodeGroupID"] = group.NodeGroupID
-	ensureCAStep.Params["CloudID"] = group.Provider
+	ensureCAStep.Params[cloudprovider.ClusterIDKey.String()] = group.ClusterID
+	ensureCAStep.Params[cloudprovider.NodeGroupIDKey.String()] = group.NodeGroupID
+	ensureCAStep.Params[cloudprovider.CloudIDKey.String()] = group.Provider
 
 	task.Steps[ensureAutoScalerTask] = ensureCAStep
 	task.StepSequence = append(task.StepSequence, ensureAutoScalerTask)

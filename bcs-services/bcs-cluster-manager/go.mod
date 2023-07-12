@@ -19,6 +19,7 @@ require (
 	github.com/Azure/azure-sdk-for-go v66.0.0+incompatible
 	github.com/Azure/go-autorest/autorest v0.11.18
 	github.com/Azure/go-autorest/autorest/adal v0.9.13
+	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5
 	github.com/RichardKnop/machinery/v2 v2.0.11
 	github.com/Tencent/bk-bcs/bcs-common v0.0.0-20230302134844-227923fceb3b
 	github.com/Tencent/bk-bcs/bcs-services/pkg v0.0.0-20230302134844-227923fceb3b
@@ -74,7 +75,6 @@ require (
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
 	github.com/RichardKnop/logging v0.0.0-20190827224416-1a693bdd4fae // indirect
 	github.com/TencentBlueKing/iam-go-sdk v0.0.8 // indirect
-	github.com/amoghe/go-crypt v0.0.0-20220222110647-20eada5f5964 // indirect
 	github.com/aws/aws-sdk-go v1.37.27 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -155,8 +155,7 @@ require (
 	github.com/spf13/cobra v1.2.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/streadway/amqp v1.0.0 // indirect
-	github.com/stretchr/objx v0.3.0 // indirect
-	github.com/stretchr/testify v1.7.2 // indirect
+	github.com/stretchr/testify v1.8.2 // indirect
 	github.com/ugorji/go/codec v1.2.3 // indirect
 	github.com/xanzy/ssh-agent v0.3.2 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect

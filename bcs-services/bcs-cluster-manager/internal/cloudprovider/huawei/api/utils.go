@@ -17,8 +17,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/GehirnInc/crypt"
+	_ "github.com/GehirnInc/crypt/sha256_crypt"
 	proto "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/api/clustermanager"
-	"github.com/amoghe/go-crypt"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cce/v3/model"
 	"strconv"
 )
@@ -84,6 +85,7 @@ func GenerateCreateNodePoolRequest(group *proto.NodeGroup, cluster *proto.Cluste
 	}, nil
 }
 
+// GenerateNodeSpec get node spec
 func GenerateNodeSpec(nodeGroup *proto.NodeGroup) (*model.NodeSpec, error) {
 	if nodeGroup.LaunchTemplate == nil {
 		return nil, fmt.Errorf("node group launch template is nil")
@@ -137,8 +139,7 @@ func GenerateNodeSpec(nodeGroup *proto.NodeGroup) (*model.NodeSpec, error) {
 
 // Crypt encryption node password
 func Crypt(password string) (string, error) {
-	salt := "tM3|cY3+tI4)"
-	str, err := crypt.Crypt(password, salt)
+	str, err := crypt.SHA256.New().Generate([]byte(password), []byte("$5$tM3|cY3+tI4)"))
 	if err != nil {
 		return "", err
 	}

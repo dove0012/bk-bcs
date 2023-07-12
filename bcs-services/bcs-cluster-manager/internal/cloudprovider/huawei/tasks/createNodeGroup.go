@@ -66,6 +66,10 @@ func CreateCloudNodeGroupTask(taskID string, stepName string) error {
 	group.NodeGroupID = strings.ToLower(group.NodeGroupID)
 	req, err := api.GenerateCreateNodePoolRequest(group, cluster)
 	if err != nil {
+		blog.Errorf("CreateCloudNodeGroupTask[%s]: generate create nodepool request[%s] in task %s step %s failed, %s",
+			taskID, nodeGroupID, taskID, stepName, err.Error())
+		retErr := fmt.Errorf("generate create nodepool request err, %s", err.Error())
+		_ = state.UpdateStepFailure(start, stepName, retErr)
 		return err
 	}
 
