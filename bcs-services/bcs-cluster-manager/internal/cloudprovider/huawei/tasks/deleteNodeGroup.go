@@ -52,6 +52,8 @@ func DeleteCloudNodeGroupTask(taskID string, stepName string) error {
 	cluster := dependInfo.Cluster
 	group := dependInfo.NodeGroup
 
+	blog.Infof("DeleteCloudNodeGroupTask[%s]: clusterId[%s] cloudNodePoolId", taskID, cluster.SystemID, group.CloudNodeGroupID)
+
 	if group.CloudNodeGroupID == "" {
 		blog.Errorf("DeleteCloudNodeGroupTask[%s]: cloud node group id is empty. step %s", taskID, stepName)
 		retErr := errors.New("parameter error: cloud node group id is empty")

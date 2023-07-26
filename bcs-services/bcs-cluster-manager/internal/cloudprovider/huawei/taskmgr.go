@@ -54,9 +54,11 @@ func newtask() *Task {
 	// delete nodeGroup task
 	task.works[deleteNodeGroupTask] = tasks.DeleteCloudNodeGroupTask
 
+	// clean node in nodeGroup task
+	task.works[cleanNodeGroupNodesTask] = tasks.CleanNodeGroupNodesTask
+
 	// update desired nodes task
 	task.works[applyInstanceMachinesTask] = tasks.ApplyInstanceMachinesTask
-	task.works[checkClusterNodesStatusTask] = tasks.CheckClusterNodesStatusTask
 
 	return task
 }
@@ -299,6 +301,7 @@ func (t *Task) BuildCleanNodesInGroupTask(nodes []*proto.Node, group *proto.Node
 		nodeIPs, nodeIDs = make([]string, 0), make([]string, 0)
 	)
 	for _, node := range nodes {
+		nodeIDs = append(nodeIDs, node.NodeID)
 		nodeIPs = append(nodeIPs, node.InnerIP)
 	}
 
@@ -393,8 +396,8 @@ func (t *Task) BuildCleanNodesInGroupTask(nodes []*proto.Node, group *proto.Node
 	// set global task paras
 	task.CommonParams[cloudprovider.NodeIDsKey.String()] = strings.Join(nodeIDs, ",")
 	task.CommonParams[cloudprovider.NodeIPsKey.String()] = strings.Join(nodeIPs, ",")
-
 	task.CommonParams[cloudprovider.JobTypeKey.String()] = cloudprovider.CleanNodeGroupNodesJob.String()
+
 	return task, nil
 }
 
@@ -447,9 +450,9 @@ func (t *Task) BuildDeleteNodeGroupTask(group *proto.NodeGroup, nodes []*proto.N
 		TaskMethod: deleteNodeGroupTask,
 		TaskName:   "删除云 NodeGroup",
 	}
-	deleteStep.Params["ClusterID"] = group.ClusterID
-	deleteStep.Params["NodeGroupID"] = group.NodeGroupID
-	deleteStep.Params["CloudID"] = group.Provider
+	deleteStep.Params[cloudprovider.ClusterIDKey.String()] = group.ClusterID
+	deleteStep.Params[cloudprovider.NodeGroupIDKey.String()] = group.NodeGroupID
+	deleteStep.Params[cloudprovider.CloudIDKey.String()] = group.Provider
 
 	task.Steps[deleteNodeGroupTask] = deleteStep
 	task.StepSequence = append(task.StepSequence, deleteNodeGroupTask)
@@ -466,9 +469,9 @@ func (t *Task) BuildDeleteNodeGroupTask(group *proto.NodeGroup, nodes []*proto.N
 			TaskMethod: ensureAutoScalerTask,
 			TaskName:   fmt.Sprintf("从集群 AutoScaler 移除 NodeGroup[%s]", group.NodeGroupID),
 		}
-		ensureAutoScalerStep.Params["ClusterID"] = group.ClusterID
-		ensureAutoScalerStep.Params["NodeGroupID"] = group.NodeGroupID
-		ensureAutoScalerStep.Params["CloudID"] = group.Provider
+		ensureAutoScalerStep.Params[cloudprovider.ClusterIDKey.String()] = group.ClusterID
+		ensureAutoScalerStep.Params[cloudprovider.NodeGroupIDKey.String()] = group.NodeGroupID
+		ensureAutoScalerStep.Params[cloudprovider.CloudIDKey.String()] = group.Provider
 
 		task.Steps[ensureAutoScalerTask] = ensureAutoScalerStep
 		task.StepSequence = append(task.StepSequence, ensureAutoScalerTask)

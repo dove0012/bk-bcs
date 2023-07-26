@@ -73,7 +73,7 @@ func CreateCloudNodeGroupTask(taskID string, stepName string) error {
 		return err
 	}
 
-	rsp, err := cceCli.CreateNodePool(req)
+	rsp, err := cceCli.CreateClusterNodePool(req)
 	if err != nil {
 		blog.Errorf("CreateCloudNodeGroupTask[%s]: call CreateClusterNodePool[%s] api in task %s "+
 			"step %s failed, %s, rsp: %+v", taskID, nodeGroupID, taskID, stepName, err.Error(), rsp)
@@ -157,10 +157,13 @@ func CheckCloudNodeGroupStatusTask(taskID string, stepName string) error {
 
 	rsp := &model.ShowNodePoolResponse{}
 	err = cloudprovider.LoopDoFunc(ctx, func() error {
-		rsp, err = cceCli.ShowNodePool(&model.ShowNodePoolRequest{
+		req := &model.ShowNodePoolRequest{
 			ClusterId:  cluster.SystemID,
 			NodepoolId: group.CloudNodeGroupID,
-		})
+		}
+		blog.Infof("ShowNodePoolRequest: %+v", *req)
+
+		rsp, err = cceCli.ShowNodePool(req)
 		if err != nil {
 			blog.Errorf("taskID[%s] GetClusterNodePool[%s/%s] failed: %v", taskID, cluster.SystemID,
 				group.CloudNodeGroupID, err)
@@ -185,6 +188,8 @@ func CheckCloudNodeGroupStatusTask(taskID string, stepName string) error {
 		_ = state.UpdateStepFailure(start, stepName, retErr)
 		return retErr
 	}
+
+	blog.Infof("CheckCloudNodeGroupStatusTask[%s]: call GetClusterNodePool successful", taskID)
 
 	// update response information to task common params
 	if state.Task.CommonParams == nil {

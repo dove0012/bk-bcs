@@ -41,7 +41,7 @@ func CleanNodeGroupNodesTask(taskID string, stepName string) error {
 	clusterID := step.Params[cloudprovider.ClusterIDKey.String()]
 	nodeGroupID := step.Params[cloudprovider.NodeGroupIDKey.String()]
 	cloudID := step.Params[cloudprovider.CloudIDKey.String()]
-	nodeIDs := strings.Split(state.Task.CommonParams[cloudprovider.NodeIDsKey.String()], ",")
+	nodeIDs := strings.Split(step.Params[cloudprovider.NodeIDsKey.String()], ",")
 
 	if len(clusterID) == 0 || len(nodeGroupID) == 0 || len(cloudID) == 0 || len(nodeIDs) == 0 {
 		blog.Errorf("CleanNodeGroupNodesTask[%s]: check parameter validate failed", taskID)
@@ -57,7 +57,6 @@ func CleanNodeGroupNodesTask(taskID string, stepName string) error {
 		return retErr
 	}
 
-	group := dependInfo.NodeGroup
 	cluster := dependInfo.Cluster
 	cmOption := dependInfo.CmOption
 
@@ -70,7 +69,9 @@ func CleanNodeGroupNodesTask(taskID string, stepName string) error {
 		return retErr
 	}
 
-	_, err = client.UpdateDesiredNodes(cluster.SystemID, group.CloudNodeGroupID, 0)
+	blog.Infof("CleanNodeGroupNodesTask[%s]: nodeIds: %+v", taskID, nodeIDs)
+
+	err = client.CleanNodePoolNodes(cluster.SystemID, nodeIDs)
 	if err != nil {
 		blog.Errorf("CleanNodeGroupNodesTask[%s]: nodegroup %s in task %s step %s clean nodepool error",
 			taskID, nodeGroupID, taskID, stepName)
@@ -78,6 +79,8 @@ func CleanNodeGroupNodesTask(taskID string, stepName string) error {
 		_ = state.UpdateStepFailure(start, stepName, retErr)
 		return retErr
 	}
+
+	blog.Infof("CleanNodeGroupNodesTask[%s]: successfully", taskID)
 
 	// update step
 	if err = state.UpdateStepSucc(start, stepName); err != nil {

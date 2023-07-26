@@ -94,11 +94,18 @@ func (ng *NodeGroup) UpdateNodeGroup(group *proto.NodeGroup, opt *cloudprovider.
 
 	cceCli, err := api.NewCceClient(opt)
 	if err != nil {
-		blog.Errorf("UpdateNodeGroup[%s]: get cce client  failed, %s", err.Error())
+		blog.Errorf("UpdateNodeGroup[%s]: get cce client failed, %s", err.Error())
 		return err
 	}
 
-	_, err = cceCli.UpdateNodePool(api.GenerateModifyClusterNodePoolInput(group, cluster.SystemID))
+	//获取节点池信息
+	rsp, err := cceCli.GetClusterNodePool(cluster.SystemID, group.CloudNodeGroupID)
+	if err != nil {
+		blog.Errorf("GetClusterNodePool[%s]: get cluster nodePool failed, %s", err.Error())
+		return err
+	}
+
+	_, err = cceCli.UpdateNodePool(api.GenerateModifyClusterNodePoolInput(group, cluster.SystemID, rsp))
 	if err != nil {
 		return err
 	}
@@ -225,7 +232,6 @@ func (ng *NodeGroup) UpdateDesiredNodes(desired uint32, group *proto.NodeGroup,
 	if group == nil || opt == nil || opt.Cluster == nil || opt.Cloud == nil {
 		return nil, fmt.Errorf("invalid request")
 	}
-
 	taskType := cloudprovider.GetTaskType(opt.Cloud.CloudProvider, cloudprovider.UpdateNodeGroupDesiredNode)
 
 	cond := operator.NewLeafCondition(operator.Eq, operator.M{
@@ -234,11 +240,13 @@ func (ng *NodeGroup) UpdateDesiredNodes(desired uint32, group *proto.NodeGroup,
 		"nodegroupid": group.NodeGroupID,
 		"status":      cloudprovider.TaskStatusRunning,
 	})
+
 	taskList, err := cloudprovider.GetStorageModel().ListTask(context.Background(), cond, &storeopt.ListOption{})
 	if err != nil {
 		blog.Errorf("UpdateDesiredNodes failed: %v", err)
 		return nil, err
 	}
+
 	if len(taskList) != 0 {
 		return nil, fmt.Errorf("%d %s task(s) is still running", len(taskList), taskType)
 	}

@@ -129,40 +129,69 @@ func (cli *CceClient) CreateClusterNodePool(req *model.CreateNodePoolRequest) (*
 	return rsp, nil
 }
 
-// UpdateDesiredNodes update node pool InitialNodeCount
-func (cli *CceClient) UpdateDesiredNodes(clusterId, nodePoolId string, nodeCount int32) (*model.UpdateNodePoolResponse, error) {
+func (cli *CceClient) GetClusterNodePool(clusterId, nodePoolId string) (*model.ShowNodePoolResponse, error) {
 	if cli == nil {
 		return nil, cloudprovider.ErrServerIsNil
 	}
 
-	var (
-		taintValue   = "unavailable"
-		userTagKey   = "bcs-node-pool"
-		userTagValue = nodePoolId
-	)
+	rsp, err := cli.ShowNodePool(&model.ShowNodePoolRequest{
+		ClusterId:  clusterId,
+		NodepoolId: nodePoolId,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return rsp, nil
+}
+
+// UpdateDesiredNodes update node pool InitialNodeCount
+func (cli *CceClient) UpdateDesiredNodes(clusterId, nodePoolId string, nodeCount int32) (
+	*model.UpdateNodePoolResponse, error) {
+	if cli == nil {
+		return nil, cloudprovider.ErrServerIsNil
+	}
+
+	taints := make([]model.Taint, 0)
+	k8sTags := map[string]string{}
+	userTags := make([]model.UserTag, 0)
+
+	nodePool, err := cli.GetClusterNodePool(clusterId, nodePoolId)
+	if err != nil {
+		return nil, fmt.Errorf("updateDesiredNodes get cluster nodePool err: %s", err)
+	}
+
+	if nodePool.Spec.NodeTemplate.Taints != nil {
+		taints = *nodePool.Spec.NodeTemplate.Taints
+	}
+
+	if nodePool.Spec.NodeTemplate.K8sTags != nil {
+		k8sTags = nodePool.Spec.NodeTemplate.K8sTags
+	}
+
+	if nodePool.Spec.NodeTemplate.UserTags != nil {
+		userTags = *nodePool.Spec.NodeTemplate.UserTags
+	}
 
 	req := &model.UpdateNodePoolRequest{
 		ClusterId:  clusterId,
 		NodepoolId: nodePoolId,
 		Body: &model.NodePoolUpdate{
 			Metadata: &model.NodePoolMetadataUpdate{
-				Name: "bcs-node-pool",
+				Name: nodePool.Metadata.Name,
 			},
 			Spec: &model.NodePoolSpecUpdate{
 				NodeTemplate: &model.NodeSpecUpdate{
-					Taints: []model.Taint{
-						{Key: "bcs-status", Value: &taintValue, Effect: model.GetTaintEffectEnum().NO_SCHEDULE},
-					},
-					K8sTags: map[string]string{},
-					UserTags: []model.UserTag{{
-						Key: &userTagKey, Value: &userTagValue,
-					}},
+					Taints:   taints,
+					K8sTags:  k8sTags,
+					UserTags: userTags,
 				},
 				InitialNodeCount: nodeCount,
 				Autoscaling:      &model.NodePoolNodeAutoscaling{},
 			},
 		},
 	}
+
 	rsp, err := cli.UpdateNodePool(req)
 	if err != nil {
 		return nil, err
@@ -206,15 +235,15 @@ func (cli *CceClient) RemoveNodePoolNodes(clusterId string, nodeIds []string, pa
 	return err
 }
 
-// DeleteNodePoolNodes 删除节点池节点
-func (cli *CceClient) DeleteNodePoolNodes(cluster string, nodeIds []string) error {
+// CleanNodePoolNodes 删除节点池节点
+func (cli *CceClient) CleanNodePoolNodes(clusterId string, nodeIds []string) error {
 	if len(nodeIds) == 0 {
 		return nil
 	}
 
 	for _, nodeId := range nodeIds {
 		_, err := cli.DeleteNode(&model.DeleteNodeRequest{
-			ClusterId: cluster,
+			ClusterId: clusterId,
 			NodeId:    nodeId,
 		})
 		if err != nil {

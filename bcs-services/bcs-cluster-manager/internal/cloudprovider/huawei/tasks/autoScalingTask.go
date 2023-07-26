@@ -43,7 +43,7 @@ func EnsureAutoScalerTask(taskID string, stepName string) error {
 	}
 
 	// get auto scaling option
-	clusterID := step.Params["ClusterID"]
+	clusterID := step.Params[cloudprovider.ClusterIDKey.String()]
 	asOption, err := cloudprovider.GetStorageModel().GetAutoScalingOption(context.Background(), clusterID)
 	if err != nil {
 		blog.Errorf("EnsureAutoScalerTask[%s]: get autoscalingoption for %s failed", taskID, clusterID)
@@ -108,7 +108,8 @@ func ensureAutoScalerWithInstaller(nodeGroups []cmproto.NodeGroup, as *cmproto.C
 	if as.EnableAutoscale {
 		scaler.Replicas = defaultReplicas
 
-		values, err := scaler.GetValues()
+		values := ""
+		values, err = scaler.GetValues()
 		if err != nil {
 			return fmt.Errorf("transAutoScalingOptionToValues failed, err: %s", err)
 		}
@@ -125,7 +126,8 @@ func ensureAutoScalerWithInstaller(nodeGroups []cmproto.NodeGroup, as *cmproto.C
 		}
 
 		// check status
-		ok, err := installer.CheckAppStatus(as.ClusterID, time.Minute*10)
+		ok := false
+		ok, err = installer.CheckAppStatus(as.ClusterID, time.Minute*10)
 		if err != nil {
 			return fmt.Errorf("check app status failed, err %s", err)
 		}
@@ -140,7 +142,8 @@ func ensureAutoScalerWithInstaller(nodeGroups []cmproto.NodeGroup, as *cmproto.C
 		// 副本数设置为 0，则停止应用
 		scaler.Replicas = 0
 
-		values, err := scaler.GetValues()
+		values := ""
+		values, err = scaler.GetValues()
 		if err != nil {
 			return fmt.Errorf("transAutoScalingOptionToValues failed, err: %s", err)
 		}
@@ -149,7 +152,8 @@ func ensureAutoScalerWithInstaller(nodeGroups []cmproto.NodeGroup, as *cmproto.C
 			return fmt.Errorf("upgrade app failed, err %s", err)
 		}
 		// check status
-		ok, err := installer.CheckAppStatus(as.ClusterID, time.Minute*10)
+		ok := false
+		ok, err = installer.CheckAppStatus(as.ClusterID, time.Minute*10)
 		if err != nil {
 			return fmt.Errorf("check app status failed, err %s", err)
 		}

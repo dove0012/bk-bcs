@@ -64,7 +64,7 @@ func RegisterClusterKubeConfigTask(taskID string, stepName string) error {
 	}
 
 	// update step
-	if err := state.UpdateStepSucc(start, stepName); err != nil {
+	if err = state.UpdateStepSucc(start, stepName); err != nil {
 		blog.Errorf("RegisterClusterKubeConfigTask[%s] task %s %s update to storage fatal", taskID, taskID, stepName)
 		return err
 	}
@@ -124,7 +124,13 @@ func ImportClusterNodesTask(taskID string, stepName string) error {
 	}
 
 	// update cluster masterNodes info
-	cloudprovider.GetStorageModel().UpdateCluster(context.Background(), basicInfo.Cluster)
+	err = cloudprovider.GetStorageModel().UpdateCluster(context.Background(), basicInfo.Cluster)
+	if err != nil {
+		blog.Errorf("ImportClusterNodesTask[%s]: UpdateCluster failed: %v", taskID, err)
+		retErr := fmt.Errorf("UpdateCluster failed, %s", err.Error())
+		_ = state.UpdateStepFailure(start, stepName, retErr)
+		return retErr
+	}
 
 	// update step
 	if err = state.UpdateStepSucc(start, stepName); err != nil {
