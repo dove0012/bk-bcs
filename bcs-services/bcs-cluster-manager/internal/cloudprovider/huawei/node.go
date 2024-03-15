@@ -10,20 +10,16 @@
  * limitations under the License.
  */
 
-// Package api xxx
-package api
+// Package huawei xxx
+package huawei
 
 import (
 	"fmt"
 	"sync"
 
-	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/global"
-	iam "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/iam/v3"
-	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/iam/v3/model"
-	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/iam/v3/region"
-
 	proto "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/api/clustermanager"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider"
+	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/huawei/api"
 )
 
 var nodeMgr sync.Once
@@ -31,22 +27,8 @@ var nodeMgr sync.Once
 func init() {
 	nodeMgr.Do(func() {
 		// init Node
-		cloudprovider.InitNodeManager("huawei", &NodeManager{})
+		cloudprovider.InitNodeManager(cloudName, &NodeManager{})
 	})
-}
-
-// GetIamClient get iam client from common option
-func GetIamClient(opt *cloudprovider.CommonOption) (*iam.IamClient, error) {
-	if opt == nil || len(opt.Account.SecretID) == 0 || len(opt.Account.SecretKey) == 0 {
-		return nil, cloudprovider.ErrCloudCredentialLost
-	}
-
-	auth := global.NewCredentialsBuilder().WithAk(opt.Account.SecretID).WithSk(opt.Account.SecretKey).Build()
-
-	// 创建IAM client
-	return iam.NewIamClient(
-		iam.IamClientBuilder().WithCredential(auth).WithRegion(region.ValueOf("cn-north-1")).Build(),
-	), nil
 }
 
 // NodeManager CVM relative API management
@@ -70,19 +52,18 @@ func (nm *NodeManager) GetCVMImageIDByImageName(imageName string, opt *cloudprov
 
 // GetCloudRegions get cloud regions
 func (nm *NodeManager) GetCloudRegions(opt *cloudprovider.CommonOption) ([]*proto.RegionInfo, error) {
-	client, err := GetIamClient(opt)
+	client, err := api.GetIamClient(opt)
 	if err != nil {
 		return nil, err
 	}
 
-	req := model.KeystoneListRegionsRequest{}
-	rsp, err := client.KeystoneListRegions(&req)
+	cloudRegions, err := client.GetCloudRegions()
 	if err != nil {
 		return nil, err
 	}
 
 	regions := make([]*proto.RegionInfo, 0)
-	for _, v := range *rsp.Regions {
+	for _, v := range cloudRegions {
 		regions = append(regions, &proto.RegionInfo{
 			Region:      v.Id,
 			RegionName:  v.Locales.ZhCn,
@@ -116,7 +97,7 @@ func (nm *NodeManager) GetResourceGroups(opt *cloudprovider.CommonOption) ([]*pr
 // GetZoneList get zoneList
 func (nm *NodeManager) GetZoneList(opt *cloudprovider.GetZoneListOption) ([]*proto.ZoneInfo, error) {
 	zoneInfos := make([]*proto.ZoneInfo, 0)
-	for _, v := range Zones {
+	for _, v := range api.Zones {
 		for x, y := range v {
 			zone := proto.ZoneInfo{
 				ZoneID:    y,

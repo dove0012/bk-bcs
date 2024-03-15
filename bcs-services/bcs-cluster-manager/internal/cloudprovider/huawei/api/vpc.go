@@ -18,9 +18,12 @@ import (
 	"sync"
 
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic"
-	vpc "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v2"
-	model "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v2/model"
-	region "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v2/region"
+	vpc2 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v2"
+	model2 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v2/model"
+	region2 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v2/region"
+	vpc3 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v3"
+	model3 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v3/model"
+	region3 "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v3/region"
 
 	proto "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/api/clustermanager"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider"
@@ -35,17 +38,57 @@ func init() {
 	})
 }
 
-// GetVpcClient get vpc client from common option
-func GetVpcClient(opt *cloudprovider.CommonOption) (*vpc.VpcClient, error) {
+// GetVpc2Client get vpc client from common option
+func GetVpc2Client(opt *cloudprovider.CommonOption) (*vpc2.VpcClient, error) {
 	if opt == nil || len(opt.Account.SecretID) == 0 || len(opt.Account.SecretKey) == 0 {
 		return nil, cloudprovider.ErrCloudCredentialLost
 	}
 
-	auth := basic.NewCredentialsBuilder().WithAk(opt.Account.SecretID).WithSk(opt.Account.SecretKey).Build()
+	auth, err := basic.NewCredentialsBuilder().WithAk(opt.Account.SecretID).WithSk(opt.Account.SecretKey).SafeBuild()
+	if err != nil {
+		return nil, err
+	}
+
+	rn, err := region2.SafeValueOf(opt.Region)
+	if err != nil {
+		return nil, err
+	}
+
+	hcClient, err := vpc2.VpcClientBuilder().WithCredential(auth).WithRegion(rn).SafeBuild()
+	if err != nil {
+		return nil, err
+	}
 
 	// 创建IAM client
-	return vpc.NewVpcClient(
-		vpc.VpcClientBuilder().WithCredential(auth).WithRegion(region.ValueOf(opt.Region)).Build(),
+	return vpc2.NewVpcClient(
+		hcClient,
+	), nil
+}
+
+// GetVpc3Client get vpc client from common option
+func GetVpc3Client(opt *cloudprovider.CommonOption) (*vpc3.VpcClient, error) {
+	if opt == nil || len(opt.Account.SecretID) == 0 || len(opt.Account.SecretKey) == 0 {
+		return nil, cloudprovider.ErrCloudCredentialLost
+	}
+
+	auth, err := basic.NewCredentialsBuilder().WithAk(opt.Account.SecretID).WithSk(opt.Account.SecretKey).SafeBuild()
+	if err != nil {
+		return nil, err
+	}
+
+	rn, err := region3.SafeValueOf(opt.Region)
+	if err != nil {
+		return nil, err
+	}
+
+	hcClient, err := vpc3.VpcClientBuilder().WithCredential(auth).WithRegion(rn).SafeBuild()
+	if err != nil {
+		return nil, err
+	}
+
+	// 创建IAM client
+	return vpc3.NewVpcClient(
+		hcClient,
 	), nil
 }
 
@@ -54,12 +97,12 @@ type VPCManager struct{}
 
 // ListVpcs list vpcs
 func (vm *VPCManager) ListVpcs(vpcID string, opt *cloudprovider.ListNetworksOption) ([]*proto.CloudVpc, error) {
-	client, err := GetVpcClient(&opt.CommonOption)
+	client, err := GetVpc2Client(&opt.CommonOption)
 	if err != nil {
 		return nil, err
 	}
 
-	rsp, err := client.ListVpcs(&model.ListVpcsRequest{Id: &vpcID})
+	rsp, err := client.ListVpcs(&model2.ListVpcsRequest{Id: &vpcID})
 	if err != nil {
 		return nil, err
 	}
@@ -78,12 +121,12 @@ func (vm *VPCManager) ListVpcs(vpcID string, opt *cloudprovider.ListNetworksOpti
 
 // ListSubnets list vpc subnets
 func (vm *VPCManager) ListSubnets(vpcID, zone string, opt *cloudprovider.ListNetworksOption) ([]*proto.Subnet, error) {
-	client, err := GetVpcClient(&opt.CommonOption)
+	client, err := GetVpc2Client(&opt.CommonOption)
 	if err != nil {
 		return nil, err
 	}
 
-	rsp, err := client.ListSubnets(&model.ListSubnetsRequest{
+	rsp, err := client.ListSubnets(&model2.ListSubnetsRequest{
 		VpcId: &vpcID,
 	})
 	if err != nil {
@@ -119,7 +162,26 @@ func (vm *VPCManager) ListSubnets(vpcID, zone string, opt *cloudprovider.ListNet
 
 // ListSecurityGroups list security groups
 func (vm *VPCManager) ListSecurityGroups(opt *cloudprovider.ListNetworksOption) ([]*proto.SecurityGroup, error) {
-	return nil, cloudprovider.ErrCloudNotImplemented
+	client, err := GetVpc3Client(&opt.CommonOption)
+	if err != nil {
+		return nil, err
+	}
+
+	rsp, err := client.ListSecurityGroups(&model3.ListSecurityGroupsRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	sgs := make([]*proto.SecurityGroup, 0)
+	for _, v := range *rsp.SecurityGroups {
+		sgs = append(sgs, &proto.SecurityGroup{
+			SecurityGroupID:   v.Id,
+			SecurityGroupName: v.Name,
+			Description:       v.Description,
+		})
+	}
+
+	return sgs, nil
 }
 
 // GetCloudNetworkAccountType 查询用户网络类型
