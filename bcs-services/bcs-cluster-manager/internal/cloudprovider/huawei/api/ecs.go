@@ -16,17 +16,41 @@ package api
 import (
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic"
 	ecs "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2"
+	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2/model"
 	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2/region"
 
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider"
 )
 
-// CceClient cce client
+// EcsClient ecs client
 type EcsClient struct {
 	*ecs.EcsClient
 }
 
-func GetEcsClient(opt *cloudprovider.CommonOption) (*EcsClient, error) {
+var (
+	performanceTypeMap = map[string]string{
+		"normal":            "通用型",
+		"entry":             "通用入门型",
+		"cpuv1":             "计算I型",
+		"cpuv2":             "计算II型",
+		"computingv3":       "通用计算增强型",
+		"computingv3_c6ne":  "通用计算增强型",
+		"kunpeng_computing": "鲲鹏通用计算增强型",
+		"kunpeng_highmem":   "鲲鹏内存优化型",
+		"kunpeng_highio":    "鲲鹏超高I/O型",
+		"highmem":           "内存优化型",
+		"saphana":           "大内存型",
+		"diskintensive":     "磁盘增强型",
+		"highio":            "超高I/O型",
+		"ultracpu":          "超高性能计算型",
+		"gpu":               "GPU加速型",
+		"fpga":              "FPGA加速型",
+		"ascend":            "AI加速型",
+	}
+)
+
+// NewEcsClient new ecs client
+func NewEcsClient(opt *cloudprovider.CommonOption) (*EcsClient, error) {
 	if opt == nil || opt.Account == nil || len(opt.Account.SecretID) == 0 || len(opt.Account.SecretKey) == 0 {
 		return nil, cloudprovider.ErrCloudCredentialLost
 	}
@@ -58,5 +82,37 @@ func GetEcsClient(opt *cloudprovider.CommonOption) (*EcsClient, error) {
 		return nil, err
 	}
 
-	return &EcsClient{EcsClient: &ecs.EcsClient{HcClient: hcClient}}, nil
+	return &EcsClient{&ecs.EcsClient{HcClient: hcClient}}, nil
+}
+
+// GetAllFlavors get all ecs flavors
+func (e *EcsClient) GetAllFlavors(az string) (*[]model.Flavor, error) {
+	rsp, err := e.ListFlavors(&model.ListFlavorsRequest{AvailabilityZone: &az})
+	if err != nil {
+		return nil, err
+	}
+
+	return rsp.Flavors, nil
+}
+
+func GetAvailabilityZones(opt *cloudprovider.CommonOption) ([]model.NovaAvailabilityZone, error) {
+	client, err := NewEcsClient(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	rsp, err := client.NovaListAvailabilityZones(&model.NovaListAvailabilityZonesRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	return *rsp.AvailabilityZoneInfo, nil
+}
+
+func ConvertPerformanceType(source string) string {
+	if v, ok := performanceTypeMap[source]; ok {
+		return v
+	}
+
+	return ""
 }

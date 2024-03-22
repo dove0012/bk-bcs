@@ -15,6 +15,8 @@ package huawei
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 
 	proto "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/api/clustermanager"
@@ -79,9 +81,27 @@ func (nm *NodeManager) ListExternalNodesByIP(ips []string, opt *cloudprovider.Li
 	return nil, cloudprovider.ErrCloudNotImplemented
 }
 
-// ListKeyPairs describe all ssh keyPairs https://cloud.tencent.com/document/product/213/15699
+// ListKeyPairs describe all ssh keyPairs
 func (nm *NodeManager) ListKeyPairs(opt *cloudprovider.ListNetworksOption) ([]*proto.KeyPair, error) {
-	return nil, cloudprovider.ErrCloudNotImplemented
+	client, err := api.NewKpsClient(&opt.CommonOption)
+	if err != nil {
+		return nil, err
+	}
+
+	rsp, err := client.GetAllUsableKeypairs()
+	if err != nil {
+		return nil, err
+	}
+
+	kps := make([]*proto.KeyPair, 0)
+	for _, v := range rsp {
+		kps = append(kps, &proto.KeyPair{
+			KeyID:   *v.Keypair.Name,
+			KeyName: *v.Keypair.Name,
+		})
+	}
+
+	return kps, nil
 }
 
 // GetExternalNodeByIP get specified Node by innerIP address
@@ -96,17 +116,19 @@ func (nm *NodeManager) GetResourceGroups(opt *cloudprovider.CommonOption) ([]*pr
 
 // GetZoneList get zoneList
 func (nm *NodeManager) GetZoneList(opt *cloudprovider.GetZoneListOption) ([]*proto.ZoneInfo, error) {
+	zones, err := api.GetAvailabilityZones(&opt.CommonOption)
+	if err != nil {
+		return nil, err
+	}
+
 	zoneInfos := make([]*proto.ZoneInfo, 0)
-	for _, v := range api.Zones {
-		for x, y := range v {
-			zone := proto.ZoneInfo{
-				ZoneID:    y,
-				Zone:      fmt.Sprintf("%d", x+1),
-				ZoneName:  fmt.Sprintf("可用区%d", x+1),
-				ZoneState: "AVAILABLE",
-			}
-			zoneInfos = append(zoneInfos, &zone)
-		}
+	for k, v := range zones {
+		zoneInfos = append(zoneInfos, &proto.ZoneInfo{
+			ZoneID:    v.ZoneName,
+			Zone:      fmt.Sprintf("%d", k+1),
+			ZoneName:  fmt.Sprintf("可用区%d", k+1),
+			ZoneState: "AVAILABLE",
+		})
 	}
 
 	return zoneInfos, nil
@@ -115,7 +137,76 @@ func (nm *NodeManager) GetZoneList(opt *cloudprovider.GetZoneListOption) ([]*pro
 // ListNodeInstanceType list node type by zone and node family
 func (nm *NodeManager) ListNodeInstanceType(info cloudprovider.InstanceInfo, opt *cloudprovider.CommonOption) (
 	[]*proto.InstanceType, error) {
-	return nil, cloudprovider.ErrCloudNotImplemented
+	client, err := api.NewEcsClient(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	flavors, err := client.GetAllFlavors(info.Zone)
+	if err != nil {
+		return nil, err
+	}
+
+	instanceTypes := make([]*proto.InstanceType, 0)
+	for _, v := range *flavors {
+		var (
+			name string
+			gpu  uint32
+		)
+
+		if v.OsExtraSpecs.Ecsperformancetype != nil {
+			name = api.ConvertPerformanceType(*v.OsExtraSpecs.Ecsperformancetype)
+			if v.OsExtraSpecs.Ecsgeneration != nil {
+				name = name + *v.OsExtraSpecs.Ecsgeneration
+			} else {
+				var tmp []string
+				if strings.Contains(v.Name, "-") {
+					tmp = strings.Split(v.Name, "-")
+				} else if strings.Contains(v.Name, ".") {
+					tmp = strings.Split(v.Name, ".")
+				}
+				if len(tmp) > 0 {
+					name = name + tmp[0]
+				}
+			}
+		}
+
+		cpu, _ := strconv.Atoi(v.Vcpus)
+		status := ""
+		if v.OsExtraSpecs.Condoperationstatus != nil {
+			status = *v.OsExtraSpecs.Condoperationstatus
+		}
+		if v.OsExtraSpecs.Infogpuname != nil {
+			res := strings.Split(*v.OsExtraSpecs.Infogpuname, "*")
+			if len(res) > 0 {
+				i, _ := strconv.Atoi(res[0])
+				gpu = uint32(i)
+			}
+		}
+		zones := make([]string, 0)
+		if v.OsExtraSpecs.Condoperationaz != nil {
+			res := strings.Split(*v.OsExtraSpecs.Condoperationaz, ",")
+			for _, y := range res {
+				zone := strings.Split(y, "(")
+				if len(zone) > 0 {
+					zones = append(zones, zone[0])
+				}
+
+			}
+		}
+		instanceTypes = append(instanceTypes, &proto.InstanceType{
+			NodeType:   v.Name,
+			TypeName:   name,
+			NodeFamily: *v.OsExtraSpecs.ResourceType,
+			Cpu:        uint32(cpu),
+			Memory:     uint32(v.Ram / 1024),
+			Gpu:        gpu,
+			Status:     status,
+			Zones:      zones,
+		})
+	}
+
+	return instanceTypes, nil
 }
 
 // ListOsImage get osimage list

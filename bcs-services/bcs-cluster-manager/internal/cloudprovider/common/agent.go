@@ -89,6 +89,11 @@ func InstallGSEAgentTask(taskID string, stepName string) error { // nolint
 	if step == nil {
 		return nil
 	}
+
+	_ = state.UpdateStepSucc(start, stepName)
+
+	return nil
+
 	// get cluster/nodeGroup
 	clusterIDString := step.Params[cloudprovider.ClusterIDKey.String()]
 	groupIDString := step.Params[cloudprovider.NodeGroupIDKey.String()]

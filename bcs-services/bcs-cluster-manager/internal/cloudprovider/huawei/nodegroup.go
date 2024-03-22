@@ -92,20 +92,20 @@ func (ng *NodeGroup) UpdateNodeGroup(group *proto.NodeGroup, opt *cloudprovider.
 		return nil, err
 	}
 
-	cceCli, err := api.NewCceClient(&opt.CommonOption)
+	client, err := api.NewCceClient(&opt.CommonOption)
 	if err != nil {
 		blog.Errorf("UpdateNodeGroup[%s]: get cce client failed, %s", err.Error())
 		return nil, err
 	}
 
 	//获取节点池信息
-	rsp, err := cceCli.GetClusterNodePool(cluster.SystemID, group.CloudNodeGroupID)
+	rsp, err := client.GetClusterNodePool(cluster.SystemID, group.CloudNodeGroupID)
 	if err != nil {
 		blog.Errorf("GetClusterNodePool[%s]: get cluster nodePool failed, %s", err.Error())
 		return nil, err
 	}
 
-	_, err = cceCli.UpdateNodePool(api.GenerateModifyClusterNodePoolInput(group, cluster.SystemID, rsp))
+	_, err = client.UpdateNodePool(api.GenerateModifyClusterNodePoolInput(group, cluster.SystemID, rsp))
 	if err != nil {
 		return nil, err
 	}
@@ -132,13 +132,13 @@ func (ng *NodeGroup) GetNodesInGroupV2(group *proto.NodeGroup,
 		return nil, err
 	}
 
-	cceCli, err := api.NewCceClient(opt)
+	client, err := api.NewCceClient(opt)
 	if err != nil {
 		blog.Errorf("GetNodesInGroup[%s]: get cce client  failed, %s", err.Error())
 		return nil, err
 	}
 
-	nodes, err := cceCli.ListClusterNodePoolNodes(cluster.SystemID, group.CloudNodeGroupID)
+	nodes, err := client.ListClusterNodePoolNodes(cluster.SystemID, group.CloudNodeGroupID)
 	if err != nil {
 		blog.Errorf("GetNodeGroupInstances failed, err: %s", err.Error())
 		return nil, err
@@ -248,7 +248,7 @@ func (ng *NodeGroup) UpdateDesiredNodes(desired uint32, group *proto.NodeGroup,
 	}
 
 	return &cloudprovider.ScalingResponse{
-		ScalingUp: needScaleOutNodes,
+		ScalingUp: desired,
 	}, nil
 }
 

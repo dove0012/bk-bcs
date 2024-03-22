@@ -159,6 +159,15 @@ func (c *CloudValidate) ListCloudSubnetsValidate(req *proto.ListCloudSubnetsRequ
 // ListSecurityGroupsValidate xxx
 func (c *CloudValidate) ListSecurityGroupsValidate(req *proto.ListCloudSecurityGroupsRequest,
 	account *proto.Account) error {
+	// call cloud interface to check account
+	if c == nil || account == nil {
+		return fmt.Errorf("%s ListSecurityGroupsValidate request is empty", cloudName)
+	}
+
+	if account.SecretID == "" || account.SecretKey == "" {
+		return fmt.Errorf("%s ListSecurityGroupsValidate request lost valid crendential info", cloudName)
+	}
+
 	return nil
 }
 

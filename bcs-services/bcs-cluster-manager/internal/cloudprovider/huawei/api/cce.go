@@ -60,9 +60,7 @@ func NewCceClient(opt *cloudprovider.CommonOption) (*CceClient, error) {
 		return nil, err
 	}
 
-	return &CceClient{
-		CceClient: cce.NewCceClient(hcClient),
-	}, nil
+	return &CceClient{cce.NewCceClient(hcClient)}, nil
 }
 
 // ListCceCluster get cce cluster list, region parameter init tke client

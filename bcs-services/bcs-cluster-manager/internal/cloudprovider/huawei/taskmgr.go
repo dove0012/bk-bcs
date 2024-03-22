@@ -54,7 +54,7 @@ func newtask() *Task {
 
 	// update desired nodes task
 	task.works[applyInstanceMachinesStep.StepMethod] = tasks.ApplyInstanceMachinesTask
-	//task.works[checkClusterNodesStatusStep.StepMethod] = tasks.CheckClusterNodesStatusTask
+	task.works[checkClusterNodesStatusStep.StepMethod] = tasks.CheckClusterNodesStatusTask
 
 	// clean node in nodeGroup task
 	task.works[cleanNodeGroupNodesStep.StepMethod] = tasks.CleanNodeGroupNodesTask

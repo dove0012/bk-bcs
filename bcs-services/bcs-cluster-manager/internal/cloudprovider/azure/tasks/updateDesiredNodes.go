@@ -485,7 +485,7 @@ func checkClusterInstanceStatus(rootCtx context.Context, info *cloudprovider.Clo
 		running := make([]string, 0)
 		nodes, err2 := k8sOperator.ListClusterNodes(context.Background(), info.Cluster.ClusterID)
 		if err2 != nil {
-			blog.Errorf("checkClusterInstanceStatus[%s] cluster[%s] failed: %v", taskID, info.Cluster.ClusterID, err)
+			blog.Errorf("checkClusterInstanceStatus[%s] cluster[%s] failed: %v", taskID, info.Cluster.ClusterID, err2)
 			return nil
 		}
 

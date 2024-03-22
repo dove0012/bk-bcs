@@ -19,14 +19,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/clusterops"
+	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/options"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/remote/loop"
+	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cce/v3/model"
+	"github.com/pkg/errors"
 
 	"github.com/Tencent/bk-bcs/bcs-common/common/blog"
+	"github.com/Tencent/bk-bcs/bcs-common/pkg/odm/operator"
 	proto "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/api/clustermanager"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/huawei/api"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/common"
-	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cce/v3/model"
+	storeopt "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/store/options"
+	cmutils "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/utils"
 )
 
 // ApplyInstanceMachinesTask update desired nodes task
@@ -137,7 +143,7 @@ func applyInstanceMachines(ctx context.Context, info *cloudprovider.CloudDependB
 func recordClusterInstanceToDB(ctx context.Context, state *cloudprovider.TaskState,
 	info *cloudprovider.CloudDependBasicInfo, nodeNum int) error {
 	var (
-		successInstances []model.Node
+		successInstance []model.Node
 	)
 	taskID := cloudprovider.GetTaskIDFromContext(ctx)
 
@@ -146,47 +152,92 @@ func recordClusterInstanceToDB(ctx context.Context, state *cloudprovider.TaskSta
 		return err
 	}
 
-	instaces, err := client.ListClusterNodePoolNodes(info.Cluster.SystemID, info.NodeGroup.CloudNodeGroupID)
+	successInstance, err = differentInstance(ctx, info, client)
 	if err != nil {
 		return err
 	}
 
-	for _, v := range instaces {
-		if v.Status.Phase.Value() == model.GetNodeStatusPhaseEnum().ACTIVE.Value() {
-			successInstances = append(successInstances, v)
-		}
+	// 回滚期望数量
+	if len(successInstance) != int(nodeNum) {
+		_ = cloudprovider.UpdateNodeGroupDesiredSize(info.NodeGroup.NodeGroupID, int(nodeNum)-len(successInstance),
+			true)
 	}
 
-	// rollback desired num
-	if len(successInstances) != nodeNum {
-		_ = cloudprovider.UpdateNodeGroupDesiredSize(info.NodeGroup.NodeGroupID, nodeNum-len(successInstances), true)
-	}
-
-	// record instanceIDs to task common
+	//  无失败机器的情况
+	// instanceIDs 保存到 队列common中
 	if state.Task.CommonParams == nil {
 		state.Task.CommonParams = make(map[string]string)
 	}
-	// remove existed instanceID
-	var newInstances []model.Node
-	for _, n := range successInstances {
-		if existNode, _ := cloudprovider.GetStorageModel().GetNode(ctx, *n.Metadata.Uid); existNode != nil &&
-			existNode.InnerIP != "" {
-			continue
+	if len(successInstance) > 0 {
+		successInstanceID := make([]string, len(successInstance))
+		for i := range successInstance {
+			successInstanceID[i] = *successInstance[i].Metadata.Uid
 		}
-		newInstances = append(newInstances, n)
+		state.Task.CommonParams[cloudprovider.NodeIDsKey.String()] = strings.Join(successInstanceID, ",")
+		state.Task.CommonParams[cloudprovider.SuccessNodeIDsKey.String()] = strings.Join(successInstanceID, ",")
 	}
 
 	// record successNodes to cluster manager DB
-	nodeIPs, err := transInstancesToNode(ctx, newInstances, info)
+	nodeIPs, err := transInstancesToNode(ctx, successInstance, info)
 	if err != nil {
-		blog.Errorf("recordClusterInstanceToDB[%s] failed: %v", taskID, err)
+		blog.Errorf("recordClusterInstanceToDB[%s] transInstancesToNode failed: %v", taskID, err)
 	}
-
 	if len(nodeIPs) > 0 {
 		state.Task.CommonParams[cloudprovider.NodeIPsKey.String()] = strings.Join(nodeIPs, ",")
 	}
 
 	return nil
+}
+
+func differentInstance(ctx context.Context, info *cloudprovider.CloudDependBasicInfo,
+	client *api.CceClient) ([]model.Node, error) {
+	var (
+		taskID = cloudprovider.GetTaskIDFromContext(ctx)
+		res    = make([]model.Node, 0)
+	)
+	instaces, err := client.ListClusterNodePoolNodes(info.Cluster.SystemID, info.NodeGroup.CloudNodeGroupID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 获取 node map
+	nodeMap, err := getNodeMap(ctx, taskID, info)
+	if err != nil {
+		return nil, errors.Wrapf(err, "scaleUpNodePool[%s] getNodeMap failed", taskID)
+	}
+
+	// 比对
+	for i, vm := range instaces {
+		nodeID := *vm.Metadata.Uid
+		if _, ok := nodeMap[nodeID]; !ok {
+			// 如果当前vm不存在于nodeMap中，则为扩容出来的机器
+			res = append(res, instaces[i])
+		}
+	}
+
+	return res, nil
+}
+
+// getNodeMap node map
+func getNodeMap(ctx context.Context, taskID string, info *cloudprovider.CloudDependBasicInfo) (map[string]bool,
+	error) {
+	group := info.NodeGroup
+	cond := operator.NewLeafCondition(operator.Eq, operator.M{
+		"nodegroupid": group.NodeGroupID,
+	})
+	// get node list
+	nodes, err := cloudprovider.GetStorageModel().ListNode(ctx, cond, &storeopt.ListOption{All: true})
+	if err != nil {
+		return nil, errors.Wrapf(err,
+			"scaleUpNodePool[%s] list group nodes in nodegroup %s for Cluster %s failed", taskID,
+			group.NodeGroupID, info.Cluster.ClusterID)
+	}
+	// list to map
+	nodeMap := make(map[string]bool)
+	for _, node := range nodes {
+		nodeMap[node.NodeID] = true
+	}
+	return nodeMap, nil
 }
 
 // transInstancesToNode record success nodes to cm DB
@@ -221,4 +272,160 @@ func transInstancesToNode(ctx context.Context, instances []model.Node, info *clo
 	}
 
 	return nodeIPs, nil
+}
+
+// CheckClusterNodesStatusTask check update desired nodes status task. nodes already add to cluster,
+// thus not rollback desiredNum and only record status
+func CheckClusterNodesStatusTask(taskID string, stepName string) error {
+	start := time.Now()
+	// get task and task current step
+	state, step, err := cloudprovider.GetTaskStateAndCurrentStep(taskID, stepName)
+	if err != nil {
+		return err
+	}
+	// previous step successful when retry task
+	if step == nil {
+		return nil
+	}
+
+	// inject taskID
+	ctx := cloudprovider.WithTaskIDForContext(context.Background(), taskID)
+	// extract parameter && check validate
+	cloudID := step.Params[cloudprovider.CloudIDKey.String()]
+	clusterID := step.Params[cloudprovider.ClusterIDKey.String()]
+	nodeGroupID := step.Params[cloudprovider.NodeGroupIDKey.String()]
+	successInstanceID := strings.Split(state.Task.CommonParams[cloudprovider.SuccessNodeIDsKey.String()], ",")
+	if len(clusterID) == 0 || len(nodeGroupID) == 0 || len(cloudID) == 0 || len(successInstanceID) == 0 {
+		blog.Errorf("CheckClusterNodesStatusTask[%s]: check parameter validate failed", taskID)
+		retErr := fmt.Errorf("CheckClusterNodesStatusTask check parameters failed")
+		_ = state.UpdateStepFailure(start, stepName, retErr)
+		return retErr
+	}
+	dependInfo, err := cloudprovider.GetClusterDependBasicInfo(cloudprovider.GetBasicInfoReq{
+		ClusterID:   clusterID,
+		CloudID:     cloudID,
+		NodeGroupID: nodeGroupID,
+	})
+	if err != nil {
+		blog.Errorf("CheckClusterNodesStatusTask[%s]: GetClusterDependBasicInfo failed: %s", taskID, err.Error())
+		retErr := fmt.Errorf("CheckClusterNodesStatusTask GetClusterDependBasicInfo failed")
+		_ = state.UpdateStepFailure(start, stepName, retErr)
+		return retErr
+	}
+
+	// 无失败机器的情况
+	successInstances, failureInstances, err := checkClusterInstanceStatus(ctx, dependInfo, successInstanceID)
+	if err != nil {
+		blog.Errorf("CheckClusterNodesStatusTask[%s]: checkClusterInstanceStatus failed: %s", taskID, err.Error())
+		retErr := fmt.Errorf("CheckClusterNodesStatusTask checkClusterInstanceStatus failed")
+		_ = state.UpdateStepFailure(start, stepName, retErr)
+		return retErr
+	}
+
+	// update response information to task common params
+	if state.Task.CommonParams == nil {
+		state.Task.CommonParams = make(map[string]string)
+	}
+	if len(successInstances) > 0 {
+		state.Task.CommonParams[cloudprovider.SuccessClusterNodeIDsKey.String()] = strings.Join(successInstances, ",")
+		// dynamic inject paras
+		state.Task.CommonParams[cloudprovider.DynamicNodeIPListKey.String()] = strings.Join(successInstances, ",")
+	}
+	if len(failureInstances) > 0 {
+		state.Task.CommonParams[cloudprovider.FailedClusterNodeIDsKey.String()] = strings.Join(failureInstances, ",")
+	}
+
+	// update step
+	if err := state.UpdateStepSucc(start, stepName); err != nil {
+		blog.Errorf("CheckClusterNodesStatusTask[%s] task %s %s update to storage fatal", taskID, taskID, stepName)
+		return err
+	}
+
+	return nil
+}
+
+func checkClusterInstanceStatus(rootCtx context.Context, info *cloudprovider.CloudDependBasicInfo,
+	instanceIDs []string) ([]string, []string, error) {
+	var (
+		addSuccessNodes = make([]string, 0)
+		addFailureNodes = make([]string, 0)
+		taskID          = cloudprovider.GetTaskIDFromContext(rootCtx)
+		ctx, cancel     = context.WithTimeout(context.TODO(), 10*time.Minute)
+	)
+	defer cancel()
+
+	k8sOperator := clusterops.NewK8SOperator(options.GetGlobalCMOptions(), cloudprovider.GetStorageModel())
+
+	// wait all nodes to be ready
+	err := loop.LoopDoFunc(ctx, func() error {
+		running := make([]string, 0)
+		nodes, lnErr := k8sOperator.ListClusterNodes(context.Background(), info.Cluster.ClusterID)
+		if lnErr != nil {
+			blog.Errorf("checkClusterInstanceStatus[%s] cluster[%s] failed: %v", taskID, info.Cluster.ClusterID, lnErr)
+			return nil
+		}
+
+		for _, v := range nodes {
+			for _, id := range instanceIDs {
+				if v.Spec.ProviderID == id && cmutils.CheckNodeIfReady(v) {
+					blog.Infof("checkClusterInstanceStatus[%s] node[%s] ready", taskID, id)
+					running = append(running, id)
+				}
+			}
+		}
+
+		blog.Infof("checkClusterInstanceStatus[%s] ready nodes[%+v]", taskID, addSuccessNodes)
+		if len(running) == len(instanceIDs) {
+			addSuccessNodes = running
+			return loop.EndLoop
+		}
+
+		return nil
+	}, loop.LoopInterval(30*time.Second))
+	// other error
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		blog.Errorf("checkClusterInstanceStatus[%s] check nodes status failed: %v", taskID, err)
+		return nil, nil, err
+	}
+
+	// timeout error
+	if errors.Is(err, context.DeadlineExceeded) {
+		addSuccessNodes, addFailureNodes, err = getVmStatus(k8sOperator, info, instanceIDs, taskID)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	blog.Infof("checkClusterInstanceStatus[%s] success[%v] failure[%v]", taskID, addSuccessNodes, addFailureNodes)
+
+	for _, n := range addFailureNodes { // set cluster node status
+		err = cloudprovider.UpdateNodeStatusByInstanceID(n, common.StatusAddNodesFailed)
+		if err != nil {
+			blog.Errorf("checkClusterInstanceStatus[%s] UpdateNodeStatusByInstanceID[%s] failed: %v", taskID, n, err)
+		}
+	}
+
+	return addSuccessNodes, addFailureNodes, nil
+}
+
+func getVmStatus(k8sOperator *clusterops.K8SOperator, info *cloudprovider.CloudDependBasicInfo, instanceIDs []string,
+	taskID string) ([]string, []string, error) {
+	running, failure := make([]string, 0), make([]string, 0)
+	nodes, err := k8sOperator.ListClusterNodes(context.Background(), info.Cluster.ClusterID)
+	if err != nil {
+		blog.Errorf("checkClusterInstanceStatus[%s] cluster[%s] failed: %v", taskID, info.Cluster.ClusterID, err)
+		return nil, nil, err
+	}
+
+	for _, v := range nodes {
+		for _, id := range instanceIDs {
+			if v.Spec.ProviderID == id && cmutils.CheckNodeIfReady(v) {
+				blog.Infof("checkClusterInstanceStatus[%s] node[%s] ready", taskID, id)
+				running = append(running, id)
+			} else {
+				failure = append(failure, id)
+			}
+		}
+	}
+
+	return running, failure, nil
 }
