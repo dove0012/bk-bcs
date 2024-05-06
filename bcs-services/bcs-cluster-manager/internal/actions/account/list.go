@@ -177,8 +177,8 @@ func shieldCloudSecretKey(account *cmproto.Account) (*cmproto.Account, error) {
 		return string(resultKeys)
 	}
 
-	account.SecretKey = shield(account.SecretKey)
-	account.ClientSecret = shield(account.ClientSecret)
+	//account.SecretKey = shield(account.SecretKey)
+	//account.ClientSecret = shield(account.ClientSecret)
 
 	if account.ServiceAccountSecret != "" {
 		sa := &types.GCPServiceAccount{}
