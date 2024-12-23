@@ -59,6 +59,7 @@ type ServerConfig struct {
 // MongoConfig option for mongo
 type MongoConfig struct {
 	Address        string `json:"address" yaml:"address"`
+	Replicaset     string `json:"replicaset" yaml:"replicaset"`
 	ConnectTimeout uint   `json:"connectTimeout" yaml:"connectTimeout"`
 	AuthDatabase   string `json:"authDatabase" yaml:"authDatabase"`
 	Database       string `json:"database" yaml:"database"`
@@ -160,21 +161,27 @@ type EncryptSecret struct {
 	Secret string `json:"secret" yaml:"secret"`
 }
 
+// SharedClusterConfig options of shared cluster config
+type SharedClusterConfig struct {
+	AnnotationKeyProjCode string `json:"annotationKeyProjCode" yaml:"annotationKeyProjCode"`
+}
+
 // HelmManagerOptions options of helm manager
 type HelmManagerOptions struct {
-	Etcd          EtcdOption         `json:"etcd" yaml:"etcd"`
-	BcsLog        LogConfig          `json:"log" yaml:"log"`
-	Swagger       SwaggerConfig      `json:"swagger" yaml:"swagger"`
-	Mongo         MongoConfig        `json:"mongo" yaml:"mongo"`
-	Repo          RepoConfig         `json:"repo" yaml:"repo"`
-	Release       ReleaseConfig      `json:"release" yaml:"release"`
-	IAM           IAMConfig          `json:"iam" yaml:"iam"`
-	JWT           JWTConfig          `json:"jwt" yaml:"jwt"`
-	Credentials   []Credential       `json:"credentials" yaml:"credentials"`
-	Encrypt       Encrypt            `json:"encrypt" yaml:"encrypt"`
-	Debug         bool               `json:"debug" yaml:"debug"`
-	TLS           TLS                `json:"tls" yaml:"tls"`
-	TracingConfig conf.TracingConfig `json:"tracingConfig" yaml:"tracingConfig"`
+	Etcd          EtcdOption          `json:"etcd" yaml:"etcd"`
+	BcsLog        LogConfig           `json:"log" yaml:"log"`
+	Swagger       SwaggerConfig       `json:"swagger" yaml:"swagger"`
+	Mongo         MongoConfig         `json:"mongo" yaml:"mongo"`
+	Repo          RepoConfig          `json:"repo" yaml:"repo"`
+	Release       ReleaseConfig       `json:"release" yaml:"release"`
+	IAM           IAMConfig           `json:"iam" yaml:"iam"`
+	JWT           JWTConfig           `json:"jwt" yaml:"jwt"`
+	Credentials   []Credential        `json:"credentials" yaml:"credentials"`
+	Encrypt       Encrypt             `json:"encrypt" yaml:"encrypt"`
+	Debug         bool                `json:"debug" yaml:"debug"`
+	TLS           TLS                 `json:"tls" yaml:"tls"`
+	TracingConfig conf.TracingConfig  `json:"tracingConfig" yaml:"tracingConfig"`
+	SharedCluster SharedClusterConfig `json:"sharedCluster" yaml:"sharedCluster"`
 	ServerConfig
 }
 

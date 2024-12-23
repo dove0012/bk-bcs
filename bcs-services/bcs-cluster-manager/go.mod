@@ -3,6 +3,7 @@ module github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager
 go 1.20
 
 replace (
+	github.com/Tencent/bk-bcs/bcs-common => ../../bcs-common
 	k8s.io/api => k8s.io/api v0.26.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.26.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.26.1
@@ -14,7 +15,6 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.4.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute v1.0.0
-	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice v1.0.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork v1.1.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources v1.1.1
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions v1.3.0
@@ -46,7 +46,7 @@ require (
 	github.com/prometheus/client_golang v1.19.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/as v1.0.398
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.0.768
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.0.1052
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.0.376
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tag v1.0.768
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/tke v1.0.544
@@ -70,6 +70,13 @@ require (
 	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/kubectl v0.0.0-00010101000000-000000000000
 	sigs.k8s.io/aws-iam-authenticator v0.6.17
+)
+
+require github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cbs v1.0.1052
+
+require (
+	github.com/Azure/azure-sdk-for-go/profile/p20200901 v0.1.1
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v3 v3.0.0
 )
 
 require (
