@@ -56,6 +56,24 @@ func GetClusterStatus(status string) *model.ListClustersRequestStatus {
 	return &statusEnum.EMPTY
 }
 
+// GetAutopilotClusterStatus get autopilot cluster status
+func GetAutopilotClusterStatus(status string) *model.ListAutopilotClustersRequestStatus {
+	statusEnum := model.GetListAutopilotClustersRequestStatusEnum()
+
+	switch status {
+	case Available:
+		return &statusEnum.AVAILABLE
+	case Unavailable:
+		return &statusEnum.UNAVAILABLE
+	case Deleting:
+		return &statusEnum.DELETING
+	case Creating:
+		return &statusEnum.CREATING
+	}
+
+	return &statusEnum.ERROR
+}
+
 // GetClusterType get cluster type
 func GetClusterType(clusterType string) *model.ListClustersRequestType {
 	typeEnum := model.GetListClustersRequestTypeEnum()
@@ -63,6 +81,18 @@ func GetClusterType(clusterType string) *model.ListClustersRequestType {
 	switch clusterType {
 	case ARM64:
 		return &typeEnum.ARM64
+	case VirtualMachine:
+		return &typeEnum.VIRTUAL_MACHINE
+	}
+
+	return &typeEnum.VIRTUAL_MACHINE
+}
+
+// GetAutopilotClusterType get autopilot cluster type
+func GetAutopilotClusterType(clusterType string) *model.ListAutopilotClustersRequestType {
+	typeEnum := model.GetListAutopilotClustersRequestTypeEnum()
+
+	switch clusterType {
 	case VirtualMachine:
 		return &typeEnum.VIRTUAL_MACHINE
 	}
@@ -898,6 +928,78 @@ type CreateClusterRequest struct {
 	Spec CreateClusterSpec
 }
 
+// CreateAutopilotClusterRequest create autopilot cluster request
+type CreateAutopilotClusterRequest struct {
+	// Name 集群名称
+	Name string
+	// Spec 集群配置
+	Spec CreateAutopilotClusterSpec
+}
+
+// CreateClusterResponse create cluster response
+type CreateClusterResponse struct {
+	Metadata *ClusterMetadata
+	Spec     *ClusterSpec
+	Status   *ClusterStatus
+}
+
+func (c *CreateAutopilotClusterRequest) Trans2CreateClusterRequest() *model.CreateAutopilotClusterRequest {
+	category := model.GetAutopilotClusterSpecCategoryEnum().TURBO
+	clusterType := model.GetAutopilotClusterSpecTypeEnum().VIRTUAL_MACHINE
+	enableSWRImageAccess := true
+	enableAutopilot := true
+	subnets := make([]model.AutopilotNetworkSubnet, 0)
+	var billingMode int32 = 0
+	for _, subnet := range c.Spec.EniNetworkSubnet {
+		subnets = append(subnets, model.AutopilotNetworkSubnet{SubnetID: subnet})
+	}
+	clusterTags := make([]model.AutopilotResourceTag, 0)
+	for k, v := range c.Spec.ClusterTag {
+		key := k
+		value := v
+		clusterTags = append(clusterTags, model.AutopilotResourceTag{
+			Key:   &key,
+			Value: &value,
+		})
+	}
+	return &model.CreateAutopilotClusterRequest{
+		Body: &model.AutopilotCluster{
+			Kind:       "Cluster",
+			ApiVersion: "v3",
+			Metadata: &model.AutopilotClusterMetadata{
+				Name: c.Name,
+				Annotations: map[string]string{
+					ClusterInstallAddonsInstall: AutopilotClusterInstallAddonsInstallValue,
+				},
+			},
+			Spec: &model.AutopilotClusterSpec{
+				Category:             &category,
+				Type:                 &clusterType,
+				Flavor:               "cce.autopilot.cluster",
+				Version:              &c.Spec.Version,
+				Description:          &c.Spec.Description,
+				EnableSnat:           &c.Spec.EnableSnat,
+				EnableSWRImageAccess: &enableSWRImageAccess,
+				EnableAutopilot:      &enableAutopilot,
+				HostNetwork: &model.AutopilotHostNetwork{
+					Vpc: c.Spec.VpcID,
+				},
+				ContainerNetwork: &model.AutopilotContainerNetwork{
+					Mode: model.GetAutopilotContainerNetworkModeEnum().ENI,
+				},
+				EniNetwork: &model.AutopilotEniNetwork{
+					Subnets: subnets, // 注意：这里用的是子网详情的 neutron_subnet_id
+				},
+				ServiceNetwork: &model.AutopilotServiceNetwork{
+					IPv4CIDR: &c.Spec.ServiceCidr,
+				},
+				BillingMode: &billingMode,
+				ClusterTags: &clusterTags,
+			},
+		},
+	}
+}
+
 func (c *CreateClusterRequest) Trans2CreateClusterRequest() *model.CreateClusterRequest {
 	category := model.GetClusterSpecCategoryEnum().TURBO
 	clusterType := model.GetClusterSpecTypeEnum().VIRTUAL_MACHINE
@@ -1022,7 +1124,7 @@ func (c *CreateClusterRequest) Trans2CreateClusterRequest() *model.CreateCluster
 	return req
 }
 
-// CreateClusterSpec create cluster spec
+// CreateClusterSpec create cce cluster spec
 type CreateClusterSpec struct {
 	// Category 集群类别
 	Category string
@@ -1060,4 +1162,22 @@ type CreateClusterSpec struct {
 	EniNetworkSubnet []string
 	// PublicIP 公网ip地址
 	PublicIP string
+}
+
+// CreateAutopilotClusterSpec create autopilot cluster spec
+type CreateAutopilotClusterSpec struct {
+	// Version 集群版本
+	Version string
+	// Description 集群描述
+	Description string
+	// VpcID vpc ID
+	VpcID string
+	// ServiceCidr 服务网段
+	ServiceCidr string
+	// ClusterTag 集群标签
+	ClusterTag map[string]string
+	// EniNetworkSubnet IPv4子网ID列表
+	EniNetworkSubnet []string
+	// EnableSnat 是否开启snat
+	EnableSnat bool
 }

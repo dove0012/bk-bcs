@@ -107,6 +107,15 @@ const (
 	"name":"coredns","requestsCpu":"2000m","requestsMem":"2048Mi"}],
 	"category":["CCE","Turbo"]}}},{"addonTemplateName":"everest"},
 	{"addonTemplateName":"node-local-dns"},{"addonTemplateName":"npd"}]`
+
+	AutopilotClusterInstallAddonsInstallValue = `[{"addonTemplateName":"coredns",
+	"values":{"flavor":{"category":["Autopilot"],"is_default":true,
+	"name":"autopilot-flavor1","replicas":2,"resources":[{"limitsCpu":1,
+	"limitsMem":"2Gi","name":"coredns","requestsCpu":1,"requestsMem":"2Gi"}]}}},
+	{"addonTemplateName":"everest"},{"addonTemplateName":"metrics-server",
+	"values":{"flavor":{"category":["Autopilot"],"description":"custom resources in autopilot cluster",
+	"is_default":true,"name":"autopilot-flavor1","replicas":2,"resources":[{"limitsCpu":1,
+	"limitsMem":"2Gi","name":"metrics-server","requestsCpu":1,"requestsMem":"2Gi"}]}}}]`
 )
 
 const (

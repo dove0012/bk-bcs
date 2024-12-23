@@ -11084,8 +11084,6 @@ func (m *InternetAccessible) validate(all bool) error {
 
 	// no validation rules for BandwidthPackageId
 
-	// no validation rules for PublicIP
-
 	if len(errors) > 0 {
 		return InternetAccessibleMultiError(errors)
 	}
@@ -66486,3 +66484,376 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = ProjectAutoscalerQuotaValidationError{}
+
+// Validate checks the field values on GetCloudPublicIPsRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *GetCloudPublicIPsRequest) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on GetCloudPublicIPsRequest with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// GetCloudPublicIPsRequestMultiError, or nil if none found.
+func (m *GetCloudPublicIPsRequest) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *GetCloudPublicIPsRequest) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetCloudID()) < 1 {
+		err := GetCloudPublicIPsRequestValidationError{
+			field:  "CloudID",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if utf8.RuneCountInString(m.GetRegion()) < 1 {
+		err := GetCloudPublicIPsRequestValidationError{
+			field:  "Region",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	// no validation rules for AccountID
+
+	if len(errors) > 0 {
+		return GetCloudPublicIPsRequestMultiError(errors)
+	}
+
+	return nil
+}
+
+// GetCloudPublicIPsRequestMultiError is an error wrapping multiple validation
+// errors returned by GetCloudPublicIPsRequest.ValidateAll() if the designated
+// constraints aren't met.
+type GetCloudPublicIPsRequestMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m GetCloudPublicIPsRequestMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m GetCloudPublicIPsRequestMultiError) AllErrors() []error { return m }
+
+// GetCloudPublicIPsRequestValidationError is the validation error returned by
+// GetCloudPublicIPsRequest.Validate if the designated constraints aren't met.
+type GetCloudPublicIPsRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e GetCloudPublicIPsRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e GetCloudPublicIPsRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e GetCloudPublicIPsRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e GetCloudPublicIPsRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e GetCloudPublicIPsRequestValidationError) ErrorName() string {
+	return "GetCloudPublicIPsRequestValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e GetCloudPublicIPsRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sGetCloudPublicIPsRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = GetCloudPublicIPsRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = GetCloudPublicIPsRequestValidationError{}
+
+// Validate checks the field values on GetCloudPublicIPsResponse with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *GetCloudPublicIPsResponse) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on GetCloudPublicIPsResponse with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// GetCloudPublicIPsResponseMultiError, or nil if none found.
+func (m *GetCloudPublicIPsResponse) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *GetCloudPublicIPsResponse) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Code
+
+	// no validation rules for Message
+
+	// no validation rules for Result
+
+	for idx, item := range m.GetData() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, GetCloudPublicIPsResponseValidationError{
+						field:  fmt.Sprintf("Data[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, GetCloudPublicIPsResponseValidationError{
+						field:  fmt.Sprintf("Data[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return GetCloudPublicIPsResponseValidationError{
+					field:  fmt.Sprintf("Data[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return GetCloudPublicIPsResponseMultiError(errors)
+	}
+
+	return nil
+}
+
+// GetCloudPublicIPsResponseMultiError is an error wrapping multiple validation
+// errors returned by GetCloudPublicIPsResponse.ValidateAll() if the
+// designated constraints aren't met.
+type GetCloudPublicIPsResponseMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m GetCloudPublicIPsResponseMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m GetCloudPublicIPsResponseMultiError) AllErrors() []error { return m }
+
+// GetCloudPublicIPsResponseValidationError is the validation error returned by
+// GetCloudPublicIPsResponse.Validate if the designated constraints aren't met.
+type GetCloudPublicIPsResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e GetCloudPublicIPsResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e GetCloudPublicIPsResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e GetCloudPublicIPsResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e GetCloudPublicIPsResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e GetCloudPublicIPsResponseValidationError) ErrorName() string {
+	return "GetCloudPublicIPsResponseValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e GetCloudPublicIPsResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sGetCloudPublicIPsResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = GetCloudPublicIPsResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = GetCloudPublicIPsResponseValidationError{}
+
+// Validate checks the field values on PublicIPInfo with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *PublicIPInfo) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on PublicIPInfo with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in PublicIPInfoMultiError, or
+// nil if none found.
+func (m *PublicIPInfo) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *PublicIPInfo) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Id
+
+	// no validation rules for Ip
+
+	// no validation rules for Status
+
+	if len(errors) > 0 {
+		return PublicIPInfoMultiError(errors)
+	}
+
+	return nil
+}
+
+// PublicIPInfoMultiError is an error wrapping multiple validation errors
+// returned by PublicIPInfo.ValidateAll() if the designated constraints aren't met.
+type PublicIPInfoMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m PublicIPInfoMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m PublicIPInfoMultiError) AllErrors() []error { return m }
+
+// PublicIPInfoValidationError is the validation error returned by
+// PublicIPInfo.Validate if the designated constraints aren't met.
+type PublicIPInfoValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e PublicIPInfoValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e PublicIPInfoValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e PublicIPInfoValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e PublicIPInfoValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e PublicIPInfoValidationError) ErrorName() string { return "PublicIPInfoValidationError" }
+
+// Error satisfies the builtin error interface
+func (e PublicIPInfoValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sPublicIPInfo.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = PublicIPInfoValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = PublicIPInfoValidationError{}

@@ -440,6 +440,8 @@ type VPCManager interface {
 	GetVpcIpUsage(vpcId string, ipType string, reservedBlocks []*net.IPNet, opt *CommonOption) (uint32, uint32, error)
 	// GetClusterIpUsage get cluster ip usage
 	GetClusterIpUsage(clusterId string, ipType string, opt *CommonOption) (uint32, uint32, error)
+	// ListPublicIP list public ips
+	ListPublicIP(opt *CommonOption) ([]*proto.PublicIPInfo, error)
 }
 
 // InstanceConfig get machine cpu/mem/disk config

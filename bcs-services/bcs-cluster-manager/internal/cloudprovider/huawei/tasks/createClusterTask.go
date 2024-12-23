@@ -30,6 +30,7 @@ import (
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/common"
 	icommon "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/common"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/remote/loop"
+	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/utils"
 )
 
 // CreateCCEClusterTask call huawei interface to create cluster
@@ -52,7 +53,6 @@ func CreateCCEClusterTask(taskID string, stepName string) error {
 	cloudID := step.Params[cloudprovider.CloudIDKey.String()]
 
 	nodeTemplateID := step.Params[cloudprovider.NodeTemplateIDKey.String()]
-	operator := state.Task.CommonParams[cloudprovider.OperatorKey.String()]
 
 	// get dependent basic info
 	dependInfo, err := cloudprovider.GetClusterDependBasicInfo(cloudprovider.GetBasicInfoReq{
@@ -71,16 +71,8 @@ func CreateCCEClusterTask(taskID string, stepName string) error {
 	// inject taskID
 	ctx := cloudprovider.WithTaskIDForContext(context.Background(), taskID)
 
-	req, err := api.GenerateCreateClusterRequest(ctx, dependInfo.Cluster, operator)
-	if err != nil {
-		blog.Errorf("createCluster[%s] generateCreateClusterRequest failed: %v", taskID, err)
-		retErr := fmt.Errorf("generate create cluster request failed, %s", err)
-		_ = state.UpdateStepFailure(start, stepName, retErr)
-		return err
-	}
-
 	// create cluster task
-	clsId, jobId, err := createCluster(ctx, dependInfo, req, dependInfo.Cluster.SystemID)
+	clsId, jobId, err := createCluster(ctx, dependInfo)
 	if err != nil {
 		blog.Errorf("CreateClusterTask[%s] createCluster for cluster[%s] failed, %s",
 			taskID, clusterID, err)
@@ -107,8 +99,7 @@ func CreateCCEClusterTask(taskID string, stepName string) error {
 	return nil
 }
 
-func createCluster(ctx context.Context, info *cloudprovider.CloudDependBasicInfo,
-	request *api.CreateClusterRequest, clsId string) (string, string, error) {
+func createCluster(ctx context.Context, info *cloudprovider.CloudDependBasicInfo) (string, string, error) {
 	taskID := cloudprovider.GetTaskIDFromContext(ctx)
 
 	client, err := api.NewCceClient(info.CmOption)
@@ -117,8 +108,8 @@ func createCluster(ctx context.Context, info *cloudprovider.CloudDependBasicInfo
 	}
 
 	jobId := ""
-	if clsId != "" {
-		cluster, errGet := client.GetCceCluster(clsId)
+	if info.Cluster.SystemID != "" {
+		cluster, errGet := client.GetCluster(info.Cluster.SystemID)
 		if errGet != nil {
 			blog.Errorf("createCluster[%s] GetCluster[%s] failed, %s",
 				taskID, info.Cluster.ClusterID, errGet)
@@ -128,7 +119,22 @@ func createCluster(ctx context.Context, info *cloudprovider.CloudDependBasicInfo
 		// update cluster systemID
 		info.Cluster.SystemID = *cluster.Metadata.Uid
 	} else {
-		rsp, err := client.CreateCluster(request)
+		var rsp *api.Cluster
+		if info.Cluster.ManageType == icommon.ClusterManageTypeIndependent {
+			var req *api.CreateClusterRequest
+			req, err = api.GenerateCreateClusterRequest(ctx, info.Cluster)
+			if err != nil {
+				return "", "", err
+			}
+			rsp, err = client.CreateCceCluster(req)
+		} else {
+			req := api.GenerateCreateAutopilotClusterRequest(ctx, info.Cluster)
+			if err != nil {
+				return "", "", err
+			}
+			rsp, err = client.CreateAutopilotCluster(req)
+		}
+
 		if err != nil {
 			return "", "", err
 		}
@@ -146,7 +152,8 @@ func createCluster(ctx context.Context, info *cloudprovider.CloudDependBasicInfo
 			}
 
 			blog.Infof("createCluster[%s] call CreateCluster updateClusterSystemID successful", taskID)
-		} else if request.Spec.Charge.ChargeType == icommon.PREPAID && rsp.Status != nil && rsp.Status.JobID != nil {
+		} else if info.Cluster.Template[0].InstanceChargeType == icommon.PREPAID &&
+			rsp.Status != nil && rsp.Status.JobID != nil {
 			jobId = *rsp.Status.JobID
 		}
 	}
@@ -264,14 +271,22 @@ func checkClusterStatus(ctx context.Context, info *cloudprovider.CloudDependBasi
 			blog.Infof("checkClusterStatus[%s] call CreateCluster updateClusterSystemID successful", taskID)
 		}
 
-		cluster, errGet := cli.GetCceCluster(systemID)
+		var (
+			cluster *api.Cluster
+			errGet  error
+		)
+		if info.Cluster.ManageType == icommon.ClusterManageTypeIndependent {
+			cluster, errGet = cli.GetCceCluster(systemID)
+		} else {
+			cluster, errGet = cli.GetAutopilotCluster(systemID)
+		}
 		if errGet != nil {
 			blog.Errorf("checkClusterStatus[%s] GetCluster failed: %v", taskID, errGet)
 			return nil
 		}
 
 		blog.Infof("checkClusterStatus[%s] cluster[%s] current status[%s]", taskID,
-			info.Cluster.ClusterID, *cluster.Status.Phase)
+			info.Cluster.ClusterID, cluster.Status.Phase)
 
 		switch *cluster.Status.Phase {
 		case api.Creating:
@@ -281,7 +296,7 @@ func checkClusterStatus(ctx context.Context, info *cloudprovider.CloudDependBasi
 		case api.Error:
 			blog.Errorf("checkClusterStatus[%s] cluster[%s] error: %s", taskID, info.Cluster.ClusterID)
 			return fmt.Errorf("checkClusterStatus[%s] status error, reason: %s",
-				info.Cluster.ClusterID, *cluster.Status.Reason)
+				info.Cluster.ClusterID, cluster.Status.Reason)
 		}
 
 		return nil
@@ -315,7 +330,7 @@ func CreateCCENodeGroupTask(taskID string, stepName string) error { // nolint
 
 	clusterID := step.Params[cloudprovider.ClusterIDKey.String()]
 	cloudID := step.Params[cloudprovider.CloudIDKey.String()]
-	nodeGroupID := step.Params[cloudprovider.NodeGroupIDKey.String()]
+	nodeGroupIDs := step.Params[cloudprovider.NodeGroupIDKey.String()]
 
 	// get dependent basic info
 	dependInfo, err := cloudprovider.GetClusterDependBasicInfo(cloudprovider.GetBasicInfoReq{
@@ -330,6 +345,23 @@ func CreateCCENodeGroupTask(taskID string, stepName string) error { // nolint
 		return retErr
 	}
 
+	nodeGroups := make([]*proto.NodeGroup, 0)
+	for _, ngID := range strings.Split(nodeGroupIDs, ",") {
+		if ngID == "" {
+			continue
+		}
+
+		nodeGroup, errGet := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), ngID)
+		if errGet != nil {
+			blog.Errorf("CreateGKEClusterTask[%s]: GetNodeGroupByGroupID for cluster %s in task %s "+
+				"step %s failed, %s", taskID, clusterID, taskID, stepName, errGet)
+			retErr := fmt.Errorf("get nodegroup information failed, %s", errGet)
+			_ = state.UpdateStepFailure(start, stepName, retErr)
+			return retErr
+		}
+		nodeGroups = append(nodeGroups, nodeGroup)
+	}
+
 	cceCli, err := api.NewCceClient(dependInfo.CmOption)
 	if err != nil {
 		blog.Errorf("CreateCCENodeGroupTask[%s]: get cce client in task %s step %s failed, %s",
@@ -339,7 +371,7 @@ func CreateCCENodeGroupTask(taskID string, stepName string) error { // nolint
 		return err
 	}
 
-	ngs, err := cceCli.ListClusterNodeGroups(dependInfo.Cluster.SystemID)
+	cloudNodeGroups, err := cceCli.ListClusterNodeGroups(dependInfo.Cluster.SystemID)
 	if err != nil {
 		blog.Errorf("CreateCCENodeGroupTask[%s]: get cce all nodegroup in task %s step %s failed, %s",
 			taskID, taskID, stepName, err)
@@ -348,28 +380,61 @@ func CreateCCENodeGroupTask(taskID string, stepName string) error { // nolint
 		return err
 	}
 
-	nodeGroup, errGet := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), nodeGroupID)
-	if errGet != nil {
-		blog.Errorf("CreateCCENodeGroupTask[%s]: GetNodeGroupByGroupID for cluster %s in task %s "+
-			"step %s failed, %s", taskID, clusterID, taskID, stepName, errGet)
-		retErr := fmt.Errorf("get nodegroup information failed, %s", errGet)
-		_ = state.UpdateStepFailure(start, stepName, retErr)
-		return retErr
-	}
-
-	// 查找云是否已经存在该节点池
-	nodeGroupName := strings.ToLower(nodeGroup.NodeGroupID)
-	found := false
-	cloudNodeGroupID := ""
-	for _, ng := range ngs {
-		if ng.Metadata.Name == nodeGroupName {
-			cloudNodeGroupID = *ng.Metadata.Uid
-			found = true
+	for _, nodeGroup := range nodeGroups {
+		// 查找云是否已经存在该节点池
+		nodeGroupName := strings.ToLower(nodeGroup.NodeGroupID)
+		found := false
+		cloudNodeGroupID := ""
+		for _, ng := range cloudNodeGroups {
+			if ng.Metadata.Name == nodeGroupName {
+				cloudNodeGroupID = *ng.Metadata.Uid
+				found = true
+			}
 		}
-	}
 
-	if found {
-		nodeGroup.CloudNodeGroupID = cloudNodeGroupID
+		if found {
+			nodeGroup.CloudNodeGroupID = cloudNodeGroupID
+			err = updateNodeGroupCloudNodeGroupID(nodeGroup.NodeGroupID, nodeGroup)
+			if err != nil {
+				blog.Errorf("CreateCCENodeGroupTask[%s]: updateNodeGroupCloudNodeGroupID[%s] in task %s step %s failed, %s",
+					taskID, nodeGroup.NodeGroupID, taskID, stepName, err)
+				retErr := fmt.Errorf("call CreateCCENodeGroupTask updateNodeGroupCloudNodeGroupID[%s] api err, %s",
+					nodeGroup.NodeGroupID, err)
+				_ = state.UpdateStepFailure(start, stepName, retErr)
+				return retErr
+			}
+
+			if err = state.UpdateStepSucc(start, stepName); err != nil {
+				blog.Errorf("CheckCCENodeGroupStatusTask[%s] task %s %s update to storage fatal", taskID, taskID, stepName)
+				return err
+			}
+
+			return nil
+		}
+
+		req, err := api.GenerateCreateNodePoolRequest(nodeGroup, dependInfo.Cluster)
+		if err != nil {
+			blog.Errorf("CreateCCENodeGroupTask[%s]: generate create nodepool request[%s] in task %s step %s failed, %s",
+				taskID, nodeGroup.NodeGroupID, taskID, stepName, err)
+			retErr := fmt.Errorf("generate create nodepool request err, %s", err)
+			_ = state.UpdateStepFailure(start, stepName, retErr)
+			return retErr
+		}
+
+		rsp, err := cceCli.CreateClusterNodePool(req)
+		if err != nil {
+			blog.Errorf("CreateCCENodeGroupTask[%s]: call CreateClusterNodePool[%s] api in task %s "+
+				"step %s failed, %s, rsp: %+v", taskID, nodeGroup.NodeGroupID, taskID, stepName, err, rsp)
+			retErr := fmt.Errorf("call CreateClusterNodePool[%s] api err, %s", nodeGroup.NodeGroupID, err)
+			_ = state.UpdateStepFailure(start, stepName, retErr)
+			return retErr
+		}
+
+		blog.Infof("CreateCCENodeGroupTask[%s]: call CreateClusterNodePool successful", taskID)
+
+		// 保存cce节点池id
+		nodeGroup.CloudNodeGroupID = *rsp.Metadata.Uid
+		// update nodegorup cloudNodeGroupID
 		err = updateNodeGroupCloudNodeGroupID(nodeGroup.NodeGroupID, nodeGroup)
 		if err != nil {
 			blog.Errorf("CreateCCENodeGroupTask[%s]: updateNodeGroupCloudNodeGroupID[%s] in task %s step %s failed, %s",
@@ -379,51 +444,9 @@ func CreateCCENodeGroupTask(taskID string, stepName string) error { // nolint
 			_ = state.UpdateStepFailure(start, stepName, retErr)
 			return retErr
 		}
-
-		if err = state.UpdateStepSucc(start, stepName); err != nil {
-			blog.Errorf("CheckCCENodeGroupStatusTask[%s] task %s %s update to storage fatal", taskID, taskID, stepName)
-			return err
-		}
-
-		return nil
+		blog.Infof("CreateCCENodeGroupTask[%s]: call CreateClusterNodePool updateNodeGroupCloudNodeGroupID successful",
+			taskID)
 	}
-
-	// cce nodePool名称以小写字母开头，由小写字母、数字、中划线(-)组成，长度范围1-50位，且不能以中划线(-)结尾
-	nodeGroup.NodeGroupID = nodeGroupName
-	req, err := api.GenerateCreateNodePoolRequest(nodeGroup, dependInfo.Cluster)
-	if err != nil {
-		blog.Errorf("CreateCCENodeGroupTask[%s]: generate create nodepool request[%s] in task %s step %s failed, %s",
-			taskID, nodeGroup.NodeGroupID, taskID, stepName, err)
-		retErr := fmt.Errorf("generate create nodepool request err, %s", err)
-		_ = state.UpdateStepFailure(start, stepName, retErr)
-		return retErr
-	}
-
-	rsp, err := cceCli.CreateClusterNodePool(req)
-	if err != nil {
-		blog.Errorf("CreateCCENodeGroupTask[%s]: call CreateClusterNodePool[%s] api in task %s "+
-			"step %s failed, %s, rsp: %+v", taskID, nodeGroup.NodeGroupID, taskID, stepName, err, rsp)
-		retErr := fmt.Errorf("call CreateClusterNodePool[%s] api err, %s", nodeGroup.NodeGroupID, err)
-		_ = state.UpdateStepFailure(start, stepName, retErr)
-		return retErr
-	}
-
-	blog.Infof("CreateCCENodeGroupTask[%s]: call CreateClusterNodePool successful", taskID)
-
-	// 保存cce节点池id
-	nodeGroup.CloudNodeGroupID = *rsp.Metadata.Uid
-	// update nodegorup cloudNodeGroupID
-	err = updateNodeGroupCloudNodeGroupID(nodeGroupID, nodeGroup)
-	if err != nil {
-		blog.Errorf("CreateCCENodeGroupTask[%s]: updateNodeGroupCloudNodeGroupID[%s] in task %s step %s failed, %s",
-			taskID, nodeGroup.NodeGroupID, taskID, stepName, err)
-		retErr := fmt.Errorf("call CreateCCENodeGroupTask updateNodeGroupCloudNodeGroupID[%s] api err, %s",
-			nodeGroup.NodeGroupID, err)
-		_ = state.UpdateStepFailure(start, stepName, retErr)
-		return retErr
-	}
-	blog.Infof("CreateCCENodeGroupTask[%s]: call CreateClusterNodePool updateNodeGroupCloudNodeGroupID successful",
-		taskID)
 
 	if err = state.UpdateStepSucc(start, stepName); err != nil {
 		blog.Errorf("CheckCCENodeGroupStatusTask[%s] task %s %s update to storage fatal", taskID, taskID, stepName)
@@ -452,7 +475,8 @@ func CheckCCENodeGroupsStatusTask(taskID string, stepName string) error { // nol
 	// step login started here
 	clusterID := step.Params[cloudprovider.ClusterIDKey.String()]
 	cloudID := step.Params[cloudprovider.CloudIDKey.String()]
-	nodeGroupID := step.Params[cloudprovider.NodeGroupIDKey.String()]
+	nodeGroupIDs := step.Params[cloudprovider.NodeGroupIDKey.String()]
+
 	dependInfo, err := cloudprovider.GetClusterDependBasicInfo(cloudprovider.GetBasicInfoReq{
 		ClusterID: clusterID,
 		CloudID:   cloudID,
@@ -465,6 +489,23 @@ func CheckCCENodeGroupsStatusTask(taskID string, stepName string) error { // nol
 		return retErr
 	}
 
+	nodeGroups := make([]*proto.NodeGroup, 0)
+	for _, ngID := range strings.Split(nodeGroupIDs, ",") {
+		if ngID == "" {
+			continue
+		}
+
+		nodeGroup, errGet := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), ngID)
+		if errGet != nil {
+			blog.Errorf("CreateGKEClusterTask[%s]: GetNodeGroupByGroupID for cluster %s in task %s "+
+				"step %s failed, %s", taskID, clusterID, taskID, stepName, errGet)
+			retErr := fmt.Errorf("get nodegroup information failed, %s", errGet)
+			_ = state.UpdateStepFailure(start, stepName, retErr)
+			return retErr
+		}
+		nodeGroups = append(nodeGroups, nodeGroup)
+	}
+
 	cceCli, err := api.NewCceClient(dependInfo.CmOption)
 	if err != nil {
 		blog.Errorf("CheckCCENodeGroupStatusTask[%s]: get cce client in task %s step %s failed, %s",
@@ -474,37 +515,48 @@ func CheckCCENodeGroupsStatusTask(taskID string, stepName string) error { // nol
 		return err
 	}
 
-	nodeGroup, errGet := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), nodeGroupID)
-	if errGet != nil {
-		blog.Errorf("CheckCCENodeGroupStatusTask[%s]: GetNodeGroupByGroupID for cluster %s in task %s "+
-			"step %s failed, %s", taskID, clusterID, taskID, stepName, errGet)
-		retErr := fmt.Errorf("get nodegroup information failed, %s", errGet)
-		_ = state.UpdateStepFailure(start, stepName, retErr)
-		return retErr
-	}
-
 	ctx := cloudprovider.WithTaskIDForContext(context.Background(), taskID)
-
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
+	var (
+		addSuccessNodeGroups = make([]string, 0)
+		addFailureNodeGroups = make([]string, 0)
+	)
+
 	// loop nodegroups status
 	err = loop.LoopDoFunc(ctx, func() error {
-		nodePool, errLocal := cceCli.GetClusterNodePool(dependInfo.Cluster.SystemID, nodeGroup.CloudNodeGroupID)
-		if errLocal != nil {
-			blog.Errorf("taskID[%s] GetClusterNodePool[%s/%s] failed: %v", taskID, dependInfo.Cluster.SystemID,
-				nodeGroup.CloudNodeGroupID, errLocal)
-			return nil
+		index := 0
+		running, failure := make([]string, 0), make([]string, 0)
+		for _, group := range nodeGroups {
+			nodePool, errLocal := cceCli.GetClusterNodePool(dependInfo.Cluster.SystemID, group.CloudNodeGroupID)
+			if errLocal != nil {
+				blog.Errorf("taskID[%s] GetClusterNodePool[%s/%s] failed: %v", taskID, dependInfo.Cluster.SystemID,
+					group.CloudNodeGroupID, errLocal)
+				return nil
+			}
+
+			switch {
+			case nodePool.Status.Phase.Value() == api.NodePoolError:
+				if !utils.StringInSlice(group.NodeGroupID, failure) {
+					failure = append(failure, group.NodeGroupID)
+				}
+				index++
+			case nodePool.Status.Phase.Value() == "":
+				if !utils.StringInSlice(group.NodeGroupID, running) {
+					running = append(running, group.NodeGroupID)
+				}
+				index++
+			default:
+				blog.Infof("taskID[%s] GetClusterNodePool[%s] still creating, status[%s]",
+					taskID, group.CloudNodeGroupID, nodePool.Status.Phase.Value())
+			}
 		}
 
-		switch {
-		case nodePool.Status.Phase.Value() == api.NodePoolError:
-			return fmt.Errorf("create nodegroup failed")
-		case nodePool.Status.Phase.Value() == "":
+		if index == len(nodeGroups) {
+			addSuccessNodeGroups = running
+			addFailureNodeGroups = failure
 			return loop.EndLoop
-		default:
-			blog.Infof("taskID[%s] GetClusterNodePool[%s] still creating, status[%s]",
-				taskID, nodeGroup.CloudNodeGroupID, nodePool.Status.Phase.Value())
 		}
 
 		return nil
@@ -516,24 +568,43 @@ func CheckCCENodeGroupsStatusTask(taskID string, stepName string) error { // nol
 		return retErr
 	}
 
-	if nodeGroup.AutoScaling.DesiredSize > 0 {
-		_, err = cceCli.UpdateNodePoolDesiredNodes(dependInfo.Cluster.SystemID, nodeGroup.CloudNodeGroupID,
-			int32(nodeGroup.AutoScaling.DesiredSize), false)
-		if err != nil {
-			blog.Errorf("updateNodeGroups[%s] desired nodes failed: %s", taskID, err)
-			retErr := fmt.Errorf("desired nodes err, %s", err)
-			_ = state.UpdateStepFailure(start, stepName, retErr)
-			return retErr
-		}
+	// update response information to task common params
+	if state.Task.CommonParams == nil {
+		state.Task.CommonParams = make(map[string]string)
 	}
-
-	nodeGroup.Status = common.StatusRunning
-	err = cloudprovider.GetStorageModel().UpdateNodeGroup(context.Background(), nodeGroup)
-	if err != nil {
-		blog.Errorf("updateNodeGroups[%s] update nodegroup failed: %s", taskID, err)
-		retErr := fmt.Errorf("update nodegroup failed err, %s", err)
+	if len(addFailureNodeGroups) > 0 {
+		state.Task.CommonParams[cloudprovider.FailedNodeGroupIDsKey.String()] = strings.Join(addFailureNodeGroups, ",")
+	}
+	if len(addSuccessNodeGroups) == 0 {
+		blog.Errorf("CheckGKENodeGroupsStatusTask[%s] nodegroups init failed", taskID)
+		retErr := fmt.Errorf("节点池初始化失败, 请联系管理员")
 		_ = state.UpdateStepFailure(start, stepName, retErr)
 		return retErr
+	}
+	state.Task.CommonParams[cloudprovider.SuccessNodeGroupIDsKey.String()] = strings.Join(addSuccessNodeGroups, ",")
+
+	for _, nodeGroup := range nodeGroups {
+		for _, id := range addSuccessNodeGroups {
+			if id == nodeGroup.NodeGroupID && nodeGroup.AutoScaling.DesiredSize > 0 {
+				_, err = cceCli.UpdateNodePoolDesiredNodes(dependInfo.Cluster.SystemID, nodeGroup.CloudNodeGroupID,
+					int32(nodeGroup.AutoScaling.DesiredSize), false)
+				if err != nil {
+					blog.Errorf("updateNodeGroups[%s] desired nodes failed: %s", taskID, err)
+					retErr := fmt.Errorf("desired nodes err, %s", err)
+					_ = state.UpdateStepFailure(start, stepName, retErr)
+					return retErr
+				}
+
+				nodeGroup.Status = common.StatusRunning
+				err = cloudprovider.GetStorageModel().UpdateNodeGroup(context.Background(), nodeGroup)
+				if err != nil {
+					blog.Errorf("updateNodeGroups[%s] update nodegroup failed: %s", taskID, err)
+					retErr := fmt.Errorf("update nodegroup failed err, %s", err)
+					_ = state.UpdateStepFailure(start, stepName, retErr)
+					return retErr
+				}
+			}
+		}
 	}
 
 	// update step
@@ -564,7 +635,8 @@ func CheckCCEClusterNodesStatusTask(taskID string, stepName string) error {
 	// step login started here
 	clusterID := step.Params[cloudprovider.ClusterIDKey.String()]
 	cloudID := step.Params[cloudprovider.CloudIDKey.String()]
-	nodeGroupID := step.Params[cloudprovider.NodeGroupIDKey.String()]
+	addSuccessNodeGroupIDs := cloudprovider.ParseNodeIpOrIdFromCommonMap(state.Task.CommonParams,
+		cloudprovider.SuccessNodeGroupIDsKey.String(), ",")
 
 	dependInfo, err := cloudprovider.GetClusterDependBasicInfo(cloudprovider.GetBasicInfoReq{
 		ClusterID: clusterID,
@@ -580,7 +652,7 @@ func CheckCCEClusterNodesStatusTask(taskID string, stepName string) error {
 
 	// check cluster status
 	ctx := cloudprovider.WithTaskIDForContext(context.Background(), taskID)
-	err = checkClusterNodesStatus(ctx, dependInfo, nodeGroupID)
+	err = checkClusterNodesStatus(ctx, dependInfo, addSuccessNodeGroupIDs)
 	if err != nil {
 		blog.Errorf("CheckCCEClusterNodesStatusTask[%s] checkClusterStatus[%s] failed: %v",
 			taskID, clusterID, err)
@@ -589,7 +661,7 @@ func CheckCCEClusterNodesStatusTask(taskID string, stepName string) error {
 		return retErr
 	}
 
-	nodeIPs, err := updateNodeToDB(ctx, dependInfo, nodeGroupID)
+	nodeIPs, err := updateNodeToDB(ctx, dependInfo, addSuccessNodeGroupIDs)
 	if err != nil {
 		blog.Errorf("UpdateNodesToDBTask[%s] checkNodesGroupStatus[%s] failed: %v",
 			taskID, clusterID, err)
@@ -613,12 +685,20 @@ func CheckCCEClusterNodesStatusTask(taskID string, stepName string) error {
 }
 
 func checkClusterNodesStatus(ctx context.Context, info *cloudprovider.CloudDependBasicInfo, // nolint
-	nodeGroupID string) error {
+	nodeGroupIDs []string) error {
 	taskID := cloudprovider.GetTaskIDFromContext(ctx)
 
-	nodeGroup, err := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), nodeGroupID)
-	if err != nil {
-		return fmt.Errorf("get nodegroup information failed, %s", err)
+	cloudNodegroupID := make([]string, 0)
+	for _, ngID := range nodeGroupIDs {
+		if ngID == "" {
+			continue
+		}
+
+		nodeGroup, err := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), ngID)
+		if err != nil {
+			return fmt.Errorf("get nodegroup information failed, %s", err)
+		}
+		cloudNodegroupID = append(cloudNodegroupID, nodeGroup.CloudNodeGroupID)
 	}
 
 	cceCli, err := api.NewCceClient(info.CmOption)
@@ -630,25 +710,26 @@ func checkClusterNodesStatus(ctx context.Context, info *cloudprovider.CloudDepen
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
-	cloudNodeGroupID := nodeGroup.CloudNodeGroupID
 	err = loop.LoopDoFunc(ctx, func() error {
-		nodePool, errLocal := cceCli.GetClusterNodePool(info.Cluster.SystemID, cloudNodeGroupID)
-		if errLocal != nil {
-			blog.Errorf("taskID[%s] checkClusterNodesStatus[%s/%s] failed: %v", taskID, info.Cluster.SystemID,
-				cloudNodeGroupID, errLocal)
-			return nil
-		}
+		for _, cloudNodeGroupID := range cloudNodegroupID {
+			nodePool, errLocal := cceCli.GetClusterNodePool(info.Cluster.SystemID, cloudNodeGroupID)
+			if errLocal != nil {
+				blog.Errorf("taskID[%s] checkClusterNodesStatus[%s/%s] failed: %v", taskID, info.Cluster.SystemID,
+					cloudNodeGroupID, errLocal)
+				return nil
+			}
 
-		switch {
-		case nodePool.Status.Phase.Value() == api.NodePoolError:
-			return fmt.Errorf("node expansion failed")
-		case nodePool.Status.Phase.Value() != "":
-			blog.Infof("taskID[%s] checkClusterNodesStatus[%s] still creating, status[%s]",
-				taskID, nodeGroupID, nodePool.Status.Phase.Value())
-		case nodePool.Status.Phase.Value() == "":
-			return loop.EndLoop
-		default:
-			return nil
+			switch {
+			case nodePool.Status.Phase.Value() == api.NodePoolError:
+				return fmt.Errorf("node expansion failed")
+			case nodePool.Status.Phase.Value() != "":
+				blog.Infof("taskID[%s] checkClusterNodesStatus[%s] still creating, status[%s]",
+					taskID, cloudNodeGroupID, nodePool.Status.Phase.Value())
+			case nodePool.Status.Phase.Value() == "":
+				return loop.EndLoop
+			default:
+				return nil
+			}
 		}
 
 		return nil
@@ -662,7 +743,7 @@ func checkClusterNodesStatus(ctx context.Context, info *cloudprovider.CloudDepen
 }
 
 func updateNodeToDB(ctx context.Context, info *cloudprovider.CloudDependBasicInfo,
-	nodeGroupID string) ([]string, error) {
+	nodeGroupIDs []string) ([]string, error) {
 	taskID := cloudprovider.GetTaskIDFromContext(ctx)
 	cceCli, err := api.NewCceClient(info.CmOption)
 	if err != nil {
@@ -671,46 +752,48 @@ func updateNodeToDB(ctx context.Context, info *cloudprovider.CloudDependBasicInf
 	}
 
 	nodeIPs := make([]string, 0)
-	nodeGroup, err := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), nodeGroupID)
-	if err != nil {
-		return nil, fmt.Errorf("updateNodeToDB GetNodeGroupByGroupID information failed, %s", err)
-	}
-
-	nodes, err := cceCli.ListClusterNodePoolNodes(info.Cluster.SystemID, nodeGroup.CloudNodeGroupID)
-	if err != nil {
-		blog.Errorf("checkClusterNodesStatus[%s] list nodes failed: %s", taskID, err)
-		return nil, fmt.Errorf("list nodes err, %s", err)
-	}
-
-	for _, n := range nodes {
-		node := &proto.Node{
-			NodeID:       *n.Metadata.Uid,
-			NodeName:     *n.Metadata.Name,
-			NodeGroupID:  nodeGroup.NodeGroupID,
-			InstanceType: n.Spec.Flavor,
-			ClusterID:    info.Cluster.ClusterID,
-			InnerIP:      *n.Status.PrivateIP,
-			ZoneID:       n.Spec.Az,
-		}
-
-		if n.Status.Phase.Value() == api.NodeActive {
-			node.Status = common.StatusRunning
-		} else {
-			node.Status = common.StatusAddNodesFailed
-		}
-
-		if n.Status.PrivateIPv6IP != nil {
-			node.InnerIPv6 = *n.Status.PrivateIPv6IP
-		}
-
-		node.ZoneName = fmt.Sprintf("可用区%d", business.GetZoneNameByZoneId(info.Cluster.Region, n.Spec.Az))
-
-		err = cloudprovider.GetStorageModel().CreateNode(context.Background(), node)
+	for _, nodeGroupID := range nodeGroupIDs {
+		nodeGroup, err := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), nodeGroupID)
 		if err != nil {
-			return nil, fmt.Errorf("updateNodeToDB CreateNode[%s] failed, %v", node.NodeName, err)
+			return nil, fmt.Errorf("updateNodeToDB GetNodeGroupByGroupID information failed, %s", err)
 		}
 
-		nodeIPs = append(nodeIPs, node.InnerIP)
+		nodes, err := cceCli.ListClusterNodePoolNodes(info.Cluster.SystemID, nodeGroup.CloudNodeGroupID)
+		if err != nil {
+			blog.Errorf("checkClusterNodesStatus[%s] list nodes failed: %s", taskID, err)
+			return nil, fmt.Errorf("list nodes err, %s", err)
+		}
+
+		for _, n := range nodes {
+			node := &proto.Node{
+				NodeID:       *n.Metadata.Uid,
+				NodeName:     *n.Metadata.Name,
+				NodeGroupID:  nodeGroup.NodeGroupID,
+				InstanceType: n.Spec.Flavor,
+				ClusterID:    info.Cluster.ClusterID,
+				InnerIP:      *n.Status.PrivateIP,
+				ZoneID:       n.Spec.Az,
+			}
+
+			if n.Status.Phase.Value() == api.NodeActive {
+				node.Status = common.StatusRunning
+			} else {
+				node.Status = common.StatusAddNodesFailed
+			}
+
+			if n.Status.PrivateIPv6IP != nil {
+				node.InnerIPv6 = *n.Status.PrivateIPv6IP
+			}
+
+			node.ZoneName = fmt.Sprintf("可用区%d", business.GetZoneNameByZoneId(info.Cluster.Region, n.Spec.Az))
+
+			err = cloudprovider.GetStorageModel().CreateNode(context.Background(), node)
+			if err != nil {
+				return nil, fmt.Errorf("updateNodeToDB CreateNode[%s] failed, %v", node.NodeName, err)
+			}
+
+			nodeIPs = append(nodeIPs, node.InnerIP)
+		}
 	}
 
 	return nodeIPs, nil
@@ -748,6 +831,15 @@ func RegisterCCEClusterKubeConfigTask(taskID string, stepName string) error {
 		return retErr
 	}
 
+	// 为autopilot集群绑定公网apiserver地址
+	err = updateClusterEip(dependInfo)
+	if err != nil {
+		blog.Errorf("RegisterCceClusterKubeConfigTask[%s] updateClusterEip failed: %s", taskID, err)
+		retErr := fmt.Errorf("updateClusterEip failed %s", err)
+		_ = state.UpdateStepFailure(start, stepName, retErr)
+		return retErr
+	}
+
 	// import cluster credential
 	err = importClusterCredential(dependInfo)
 	if err != nil {
@@ -767,6 +859,20 @@ func RegisterCCEClusterKubeConfigTask(taskID string, stepName string) error {
 	if err = state.UpdateStepSucc(start, stepName); err != nil {
 		blog.Errorf("RegisterCceClusterKubeConfigTask[%s:%s] update to storage fatal", taskID, stepName)
 		return err
+	}
+
+	return nil
+}
+
+func updateClusterEip(info *cloudprovider.CloudDependBasicInfo) error {
+	if info.Cluster.ManageType == icommon.ClusterManageTypeManaged &&
+		info.Cluster.ClusterAdvanceSettings.ClusterConnectSetting.IsExtranet {
+		cli, err := api.NewCceClient(info.CmOption)
+		if err != nil {
+			return err
+		}
+
+		cli.UpdateAutopilotClusterEip(info.Cluster.SystemID, info.Cluster.ExtraInfo["publicIP"])
 	}
 
 	return nil

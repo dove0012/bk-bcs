@@ -775,6 +775,12 @@ func NewClusterManagerEndpoints() []*api.Endpoint {
 			Handler: "rpc",
 		},
 		{
+			Name:    "ClusterManager.GetCloudPublicIPs",
+			Path:    []string{"/clustermanager/v1/clouds/{cloudID}/ips"},
+			Method:  []string{"GET"},
+			Handler: "rpc",
+		},
+		{
 			Name:    "ClusterManager.ListCloudRuntimeInfo",
 			Path:    []string{"/clustermanager/v1/clouds/{cloudID}/runtimeinfo"},
 			Method:  []string{"GET"},
@@ -1066,6 +1072,7 @@ type ClusterManagerService interface {
 	ListCloudInstancesByPost(ctx context.Context, in *ListCloudInstancesRequest, opts ...client.CallOption) (*ListCloudInstancesResponse, error)
 	GetCloudAccountType(ctx context.Context, in *GetCloudAccountTypeRequest, opts ...client.CallOption) (*GetCloudAccountTypeResponse, error)
 	GetCloudBandwidthPackages(ctx context.Context, in *GetCloudBandwidthPackagesRequest, opts ...client.CallOption) (*GetCloudBandwidthPackagesResponse, error)
+	GetCloudPublicIPs(ctx context.Context, in *GetCloudPublicIPsRequest, opts ...client.CallOption) (*GetCloudPublicIPsResponse, error)
 	ListCloudRuntimeInfo(ctx context.Context, in *ListCloudRuntimeInfoRequest, opts ...client.CallOption) (*ListCloudRuntimeInfoResponse, error)
 	// Operation logs
 	ListOperationLogs(ctx context.Context, in *ListOperationLogsRequest, opts ...client.CallOption) (*ListOperationLogsResponse, error)
@@ -2353,6 +2360,16 @@ func (c *clusterManagerService) GetCloudBandwidthPackages(ctx context.Context, i
 	return out, nil
 }
 
+func (c *clusterManagerService) GetCloudPublicIPs(ctx context.Context, in *GetCloudPublicIPsRequest, opts ...client.CallOption) (*GetCloudPublicIPsResponse, error) {
+	req := c.c.NewRequest(c.name, "ClusterManager.GetCloudPublicIPs", in)
+	out := new(GetCloudPublicIPsResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *clusterManagerService) ListCloudRuntimeInfo(ctx context.Context, in *ListCloudRuntimeInfoRequest, opts ...client.CallOption) (*ListCloudRuntimeInfoResponse, error) {
 	req := c.c.NewRequest(c.name, "ClusterManager.ListCloudRuntimeInfo", in)
 	out := new(ListCloudRuntimeInfoResponse)
@@ -2742,6 +2759,7 @@ type ClusterManagerHandler interface {
 	ListCloudInstancesByPost(context.Context, *ListCloudInstancesRequest, *ListCloudInstancesResponse) error
 	GetCloudAccountType(context.Context, *GetCloudAccountTypeRequest, *GetCloudAccountTypeResponse) error
 	GetCloudBandwidthPackages(context.Context, *GetCloudBandwidthPackagesRequest, *GetCloudBandwidthPackagesResponse) error
+	GetCloudPublicIPs(context.Context, *GetCloudPublicIPsRequest, *GetCloudPublicIPsResponse) error
 	ListCloudRuntimeInfo(context.Context, *ListCloudRuntimeInfoRequest, *ListCloudRuntimeInfoResponse) error
 	// Operation logs
 	ListOperationLogs(context.Context, *ListOperationLogsRequest, *ListOperationLogsResponse) error
@@ -2912,6 +2930,7 @@ func RegisterClusterManagerHandler(s server.Server, hdlr ClusterManagerHandler, 
 		ListCloudInstancesByPost(ctx context.Context, in *ListCloudInstancesRequest, out *ListCloudInstancesResponse) error
 		GetCloudAccountType(ctx context.Context, in *GetCloudAccountTypeRequest, out *GetCloudAccountTypeResponse) error
 		GetCloudBandwidthPackages(ctx context.Context, in *GetCloudBandwidthPackagesRequest, out *GetCloudBandwidthPackagesResponse) error
+		GetCloudPublicIPs(ctx context.Context, in *GetCloudPublicIPsRequest, out *GetCloudPublicIPsResponse) error
 		ListCloudRuntimeInfo(ctx context.Context, in *ListCloudRuntimeInfoRequest, out *ListCloudRuntimeInfoResponse) error
 		ListOperationLogs(ctx context.Context, in *ListOperationLogsRequest, out *ListOperationLogsResponse) error
 		ListTaskStepLogs(ctx context.Context, in *ListTaskStepLogsRequest, out *ListTaskStepLogsResponse) error
@@ -3681,6 +3700,12 @@ func RegisterClusterManagerHandler(s server.Server, hdlr ClusterManagerHandler, 
 		Handler: "rpc",
 	}))
 	opts = append(opts, api.WithEndpoint(&api.Endpoint{
+		Name:    "ClusterManager.GetCloudPublicIPs",
+		Path:    []string{"/clustermanager/v1/clouds/{cloudID}/ips"},
+		Method:  []string{"GET"},
+		Handler: "rpc",
+	}))
+	opts = append(opts, api.WithEndpoint(&api.Endpoint{
 		Name:    "ClusterManager.ListCloudRuntimeInfo",
 		Path:    []string{"/clustermanager/v1/clouds/{cloudID}/runtimeinfo"},
 		Method:  []string{"GET"},
@@ -4327,6 +4352,10 @@ func (h *clusterManagerHandler) GetCloudAccountType(ctx context.Context, in *Get
 
 func (h *clusterManagerHandler) GetCloudBandwidthPackages(ctx context.Context, in *GetCloudBandwidthPackagesRequest, out *GetCloudBandwidthPackagesResponse) error {
 	return h.ClusterManagerHandler.GetCloudBandwidthPackages(ctx, in, out)
+}
+
+func (h *clusterManagerHandler) GetCloudPublicIPs(ctx context.Context, in *GetCloudPublicIPsRequest, out *GetCloudPublicIPsResponse) error {
+	return h.ClusterManagerHandler.GetCloudPublicIPs(ctx, in, out)
 }
 
 func (h *clusterManagerHandler) ListCloudRuntimeInfo(ctx context.Context, in *ListCloudRuntimeInfoRequest, out *ListCloudRuntimeInfoResponse) error {

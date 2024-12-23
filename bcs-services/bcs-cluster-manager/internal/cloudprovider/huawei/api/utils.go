@@ -179,7 +179,8 @@ func GenerateCreateNodePoolRequest(group *proto.NodeGroup,
 
 	return &CreateNodePoolRequest{
 		ClusterId: clusterId,
-		Name:      group.NodeGroupID,
+		// cce nodePool名称以小写字母开头，由小写字母、数字、中划线(-)组成，长度范围1-50位，且不能以中划线(-)结尾
+		Name: strings.ToLower(group.NodeGroupID),
 		Spec: CreateNodePoolSpec{
 			Template: CreateNodePoolTemplate{
 				Flavor: group.LaunchTemplate.InstanceType,
@@ -213,8 +214,7 @@ func GenerateCreateNodePoolRequest(group *proto.NodeGroup,
 }
 
 // GenerateCreateClusterRequest get cce cluster create request
-func GenerateCreateClusterRequest(ctx context.Context, cluster *proto.Cluster,
-	operator string) (*CreateClusterRequest, error) {
+func GenerateCreateClusterRequest(ctx context.Context, cluster *proto.Cluster) (*CreateClusterRequest, error) {
 	flavor, err := trans2CCEFlavor(cluster.ClusterBasicSettings.ClusterLevel, cluster.Template)
 	if err != nil {
 		return nil, err
@@ -288,12 +288,34 @@ func GenerateCreateClusterRequest(ctx context.Context, cluster *proto.Cluster,
 		},
 	}
 
-	internet := cluster.ClusterAdvanceSettings.ClusterConnectSetting.Internet
-	if internet != nil {
-		req.Spec.PublicIP = internet.PublicIP
+	if ip, ok := cluster.ExtraInfo["publicIP"]; ok {
+		req.Spec.PublicIP = ip
 	}
 
 	return req, nil
+}
+
+// GenerateCreateAutopilotClusterRequest get autopilot cluster create request
+func GenerateCreateAutopilotClusterRequest(ctx context.Context,
+	cluster *proto.Cluster) *CreateAutopilotClusterRequest {
+	req := &CreateAutopilotClusterRequest{
+		Name: strings.ToLower(cluster.ClusterID),
+		Spec: CreateAutopilotClusterSpec{
+			Version:          cluster.ClusterBasicSettings.Version,
+			Description:      cluster.GetDescription(),
+			VpcID:            cluster.VpcID,
+			ServiceCidr:      cluster.NetworkSettings.ServiceIPv4CIDR,
+			ClusterTag:       cluster.Labels,
+			EniNetworkSubnet: cluster.NetworkSettings.EniSubnetIDs,
+			EnableSnat:       true,
+		},
+	}
+
+	if v, ok := cluster.ExtraInfo["enableSnat"]; ok && v == "false" {
+		req.Spec.EnableSnat = false
+	}
+
+	return req
 }
 
 func trans2CCEFlavor(s string, instance []*proto.InstanceTemplateConfig) (string, error) {

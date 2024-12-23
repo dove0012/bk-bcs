@@ -15,6 +15,7 @@ package huawei
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -279,6 +280,13 @@ func (c *CloudValidate) CreateClusterValidate(req *proto.CreateClusterReq, opt *
 	}
 	if len(regions) == 0 {
 		return fmt.Errorf("%s invalid aksk", cloudName)
+	}
+
+	// 如果是外网访问，需要检查是否有公网IP
+	if req.ClusterAdvanceSettings.ClusterConnectSetting.IsExtranet {
+		if ip, ok := req.ExtraInfo["publicIP"]; !ok || ip == "" {
+			return errors.New("publicIP is empty")
+		}
 	}
 
 	return nil

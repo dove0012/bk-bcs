@@ -22,6 +22,7 @@ import (
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/huawei/api"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/huawei/business"
+	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/remote/cidrtree"
 )
 
 var vpcMgr sync.Once
@@ -103,14 +104,14 @@ func (vm *VPCManager) ListSubnets(vpcID, zone string, opt *cloudprovider.ListNet
 
 		subnets = append(subnets, &proto.Subnet{
 			VpcID:                   s.VpcId,
-			SubnetID:                s.Id,
+			SubnetID:                s.NeutronNetworkId, // 注意华为的这里为网络ID，是逻辑ID，创建集群时hostNetwork.subnet为此字段
 			SubnetName:              s.Name,
 			CidrRange:               s.Cidr,
 			Ipv6CidrRange:           s.CidrV6,
 			Zone:                    subnetZone,
 			ZoneName:                subnetZoneName,
 			AvailableIPAddressCount: uint64(cnt),
-			HwNeutronSubnetID:       s.NeutronSubnetId,
+			HwNeutronSubnetID:       s.NeutronSubnetId, // 注意华为的这里才是子网ID，创建集群时eniNetwork.subnets.subnetID为此字段，只有turbo类型集群才有此字段
 		})
 	}
 
@@ -175,7 +176,42 @@ func (vm *VPCManager) ListBandwidthPacks(opt *cloudprovider.CommonOption) ([]*pr
 // CheckConflictInVpcCidr check cidr if conflict with vpc cidrs
 func (vm *VPCManager) CheckConflictInVpcCidr(vpcID string, cidr string,
 	opt *cloudprovider.CheckConflictInVpcCidrOption) ([]string, error) {
-	return nil, cloudprovider.ErrCloudNotImplemented
+	subnets, err := business.GetCloudSubnetsByVpc(vpcID, opt.CommonOption)
+	if err != nil {
+		return nil, fmt.Errorf("list subnets failed, err %s", err.Error())
+	}
+
+	if len(subnets) == 0 {
+		return nil, fmt.Errorf("subnet not found")
+	}
+
+	ipNets := make([]*net.IPNet, 0)
+	for _, v := range subnets {
+		if vpcID != "" && vpcID != v.VpcId {
+			continue
+		}
+
+		_, c, err := net.ParseCIDR(v.Cidr)
+		if err != nil {
+			return nil, err
+		}
+
+		ipNets = append(ipNets, c)
+	}
+
+	_, c, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
+
+	conflictCidrs := make([]string, 0)
+	for i := range ipNets {
+		if cidrtree.CidrContains(ipNets[i], c) || cidrtree.CidrContains(c, ipNets[i]) {
+			conflictCidrs = append(conflictCidrs, ipNets[i].String())
+		}
+	}
+
+	return conflictCidrs, nil
 }
 
 // AllocateOverlayCidr allocate overlay cidr
@@ -199,4 +235,28 @@ func (vm *VPCManager) GetVpcIpUsage(
 func (vm *VPCManager) GetClusterIpUsage(clusterId string, ipType string, opt *cloudprovider.CommonOption) (
 	uint32, uint32, error) {
 	return 0, 0, nil
+}
+
+// ListPublicIP list public ip
+func (vm *VPCManager) ListPublicIP(opt *cloudprovider.CommonOption) ([]*proto.PublicIPInfo, error) {
+	client, err := api.NewEipClient(opt)
+	if err != nil {
+		return nil, err
+	}
+
+	rsp, err := client.GetAllPublicIps()
+	if err != nil {
+		return nil, err
+	}
+
+	publicIps := make([]*proto.PublicIPInfo, 0)
+	for _, v := range rsp {
+		publicIps = append(publicIps, &proto.PublicIPInfo{
+			Id:     *v.Id,
+			Ip:     *v.PublicIpAddress,
+			Status: v.Status.Value(),
+		})
+	}
+
+	return publicIps, nil
 }

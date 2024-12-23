@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Tencent/bk-bcs/bcs-common/common/blog"
 	cce "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cce/v3"
@@ -66,26 +67,29 @@ type CceClient struct {
 }
 
 // ListCceCluster get cce cluster list, region parameter init tke client
-func (cli *CceClient) ListCceCluster(filter *ClusterFilterCond) (*[]model.Cluster, error) {
+func (cli *CceClient) ListCceCluster(filter *ClusterFilterCond) ([]*Cluster, error) {
 	if cli == nil {
 		return nil, cloudprovider.ErrServerIsNil
 	}
 
-	req := model.ListClustersRequest{}
 	var (
-		detail = "true"
+		detail       = "true"
+		req          = model.ListClustersRequest{Detail: &detail}
+		autopilotReq = model.ListAutopilotClustersRequest{Detail: &detail}
 	)
-	req.Detail = &detail
 
 	if filter != nil {
 		if len(filter.Status) > 0 {
 			req.Status = GetClusterStatus(filter.Status)
+			autopilotReq.Status = GetAutopilotClusterStatus(filter.Status)
 		}
 		if len(filter.Type) > 0 {
 			req.Type = GetClusterType(filter.Type)
+			autopilotReq.Type = GetAutopilotClusterType(filter.Type)
 		}
 		if len(filter.Version) > 0 {
 			req.Version = &filter.Version
+			autopilotReq.Version = &filter.Version
 		}
 	}
 
@@ -94,16 +98,76 @@ func (cli *CceClient) ListCceCluster(filter *ClusterFilterCond) (*[]model.Cluste
 		return nil, err
 	}
 
-	return rsp.Items, nil
+	autopilotRsp, err := cli.cce.ListAutopilotClusters(&autopilotReq)
+	if err != nil {
+		return nil, err
+	}
+
+	cluster := make([]*Cluster, 0)
+
+	for _, v := range *rsp.Items {
+		cluster = append(cluster, &Cluster{
+			Metadata: &ClusterMetadata{
+				Uid:  v.Metadata.Uid,
+				Name: v.Metadata.Name,
+			},
+			Spec: &ClusterSpec{
+				Type:        v.Spec.Type.Value(),
+				Version:     v.Spec.Version,
+				Description: v.Spec.Description,
+			},
+			Status: &ClusterStatus{
+				Phase: v.Status.Phase,
+			},
+		})
+	}
+
+	for _, v := range *autopilotRsp.Items {
+		cluster = append(cluster, &Cluster{
+			Metadata: &ClusterMetadata{
+				Uid:  v.Metadata.Uid,
+				Name: v.Metadata.Name,
+			},
+			Spec: &ClusterSpec{
+				Type:        v.Spec.Type.Value(),
+				Version:     v.Spec.Version,
+				Description: v.Spec.Description,
+			},
+			Status: &ClusterStatus{
+				Phase: v.Status.Phase,
+			},
+		})
+	}
+
+	return cluster, nil
 }
 
 // CreateCluster create cce cluster
-func (cli *CceClient) CreateCluster(req *CreateClusterRequest) (*model.CreateClusterResponse, error) {
+func (cli *CceClient) CreateCceCluster(req *CreateClusterRequest) (*Cluster, error) {
 	if cli == nil {
 		return nil, cloudprovider.ErrServerIsNil
 	}
 
-	return cli.cce.CreateCluster(req.Trans2CreateClusterRequest())
+	rsp, err := cli.cce.CreateCluster(req.Trans2CreateClusterRequest())
+	if err != nil {
+		return nil, err
+	}
+
+	return CceClusterCreateRsp2Cluster(rsp), nil
+}
+
+// CreateAutopilotCluster create autopilot cluster
+func (cli *CceClient) CreateAutopilotCluster(req *CreateAutopilotClusterRequest) (*Cluster, error) {
+	if cli == nil {
+		return nil, cloudprovider.ErrServerIsNil
+	}
+
+	rsp, err := cli.cce.CreateAutopilotCluster(req.Trans2CreateClusterRequest())
+	if err != nil {
+		return nil, err
+	}
+
+	return AutopilotClusterCreateRsp2Cluster(rsp), nil
 }
 
 // DeleteCceCluster delete cce cluster
@@ -141,8 +205,54 @@ func (cli *CceClient) DeleteCceCluster(clusterID string) error {
 	return err
 }
 
+// DeleteAutopilotCluster delete autopilot cluster
+func (cli *CceClient) DeleteAutopilotCluster(clusterID string) error {
+	if cli == nil {
+		return cloudprovider.ErrServerIsNil
+	}
+
+	var (
+		deleteEfs        = model.GetDeleteAutopilotClusterRequestDeleteEfsEnum().TRUE
+		deleteEni        = model.GetDeleteAutopilotClusterRequestDeleteEniEnum().FALSE
+		deleteNet        = model.GetDeleteAutopilotClusterRequestDeleteNetEnum().TRUE
+		deleteObs        = model.GetDeleteAutopilotClusterRequestDeleteObsEnum().TRUE
+		deleteSfs30      = model.GetDeleteAutopilotClusterRequestDeleteSfs30Enum().TRUE
+		ltsReclaimPolicy = model.GetDeleteAutopilotClusterRequestLtsReclaimPolicyEnum().TRUE
+	)
+
+	_, err := cli.cce.DeleteAutopilotCluster(&model.DeleteAutopilotClusterRequest{
+		ClusterId:        clusterID,
+		DeleteEfs:        &deleteEfs,
+		DeleteEni:        &deleteEni,
+		DeleteNet:        &deleteNet,
+		DeleteObs:        &deleteObs,
+		DeleteSfs30:      &deleteSfs30,
+		LtsReclaimPolicy: &ltsReclaimPolicy,
+	})
+	return err
+}
+
+// GetCluster get cce/autopilot cluster
+func (cli *CceClient) GetCluster(clusterID string) (*Cluster, error) {
+	rsp, err := cli.GetCceCluster(clusterID)
+	if err == nil {
+		return rsp, nil
+	}
+
+	if !strings.Contains(err.Error(), "Resource not found") {
+		return nil, err
+	}
+
+	rsp, err = cli.GetAutopilotCluster(clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	return rsp, nil
+}
+
 // GetCceCluster get cce cluster
-func (cli *CceClient) GetCceCluster(clusterID string) (*model.ShowClusterResponse, error) {
+func (cli *CceClient) GetCceCluster(clusterID string) (*Cluster, error) {
 	if cli == nil {
 		return nil, cloudprovider.ErrServerIsNil
 	}
@@ -156,7 +266,25 @@ func (cli *CceClient) GetCceCluster(clusterID string) (*model.ShowClusterRespons
 		return nil, err
 	}
 
-	return rsp, nil
+	return CceClusterRsp2Cluster(rsp), nil
+}
+
+// GetAutopilotCluster get autopilot cluster
+func (cli *CceClient) GetAutopilotCluster(clusterID string) (*Cluster, error) {
+	if cli == nil {
+		return nil, cloudprovider.ErrServerIsNil
+	}
+
+	req := model.ShowAutopilotClusterRequest{
+		ClusterId: clusterID,
+		Detail:    common.StringPtr("true"),
+	}
+	rsp, err := cli.cce.ShowAutopilotCluster(&req)
+	if err != nil {
+		return nil, err
+	}
+
+	return AutopilotClusterRsp2Cluster(rsp), nil
 }
 
 // ShowCceClusterEndpoints get cce cluster endpoints
@@ -177,7 +305,7 @@ func (cli *CceClient) ShowCceClusterEndpoints(clusterID string) (*model.ShowClus
 }
 
 // CreateKubernetesClusterCert 获取集群证书
-func (cli *CceClient) CreateKubernetesClusterCert(clsId string, duration int32) (
+func (cli *CceClient) CreateCceKubernetesClusterCert(clsId string, duration int32) (
 	*model.CreateKubernetesClusterCertResponse, error) {
 	if cli == nil {
 		return nil, cloudprovider.ErrServerIsNil
@@ -210,17 +338,128 @@ func (cli *CceClient) CreateKubernetesClusterCert(clsId string, duration int32) 
 	return response, nil
 }
 
-// GetClusterKubeConfig 获取cce集群 kubeconfig, 返回值base64编码. isExtranet: true 外部 false 内部
+// CreateKubernetesClusterCert 获取集群证书
+func (cli *CceClient) CreateAutopilotKubernetesClusterCert(clsId string, duration int32) (
+	*model.CreateAutopilotKubernetesClusterCertResponse, error) {
+	if cli == nil {
+		return nil, cloudprovider.ErrServerIsNil
+	}
+	if clsId == "" {
+		return nil, fmt.Errorf("clusterId empty")
+	}
+	// duration 集群证书有效时间，最小值为1天，最大值为5年，因此取值范围为1-1827, -1则为最大值5年
+	if duration != -1 {
+		if duration < 1 {
+			duration = 1
+		}
+		if duration > 1827 {
+			duration = 1827
+		}
+	}
+
+	request := &model.CreateAutopilotKubernetesClusterCertRequest{
+		ClusterId: clsId,
+	}
+	request.Body = &model.CertDuration{
+		Duration: duration,
+	}
+
+	response, err := cli.cce.CreateAutopilotKubernetesClusterCert(request)
+	if err != nil {
+		return nil, err
+	}
+
+	return response, nil
+}
+
+// GetClusterKubeConfig 获取cce/autopilot集群 kubeconfig, 返回值base64编码. isExtranet: true 外部 false 内部
 func (cli *CceClient) GetClusterKubeConfig(clusterId string, isExtranet bool) (string, error) {
-	cert, err := cli.CreateKubernetesClusterCert(clusterId, -1)
+	cert, err := cli.CreateCceKubernetesClusterCert(clusterId, -1)
+	if err == nil {
+		newCert := &CreateKubernetesClusterCertResponse{
+			Kind:           cert.Kind,
+			ApiVersion:     cert.ApiVersion,
+			Preferences:    cert.Preferences,
+			Clusters:       cert.Clusters,
+			Users:          cert.Users,
+			Contexts:       cert.Contexts,
+			CurrentContext: cert.CurrentContext,
+			PortID:         cert.PortID,
+			HttpStatusCode: cert.HttpStatusCode,
+		}
+
+		return getCceClusterKubeConfig(newCert, isExtranet)
+	}
+
+	if !strings.Contains(err.Error(), "Resource not found") {
+		return "", err
+	}
+
+	autopilotCert, err := cli.CreateAutopilotKubernetesClusterCert(clusterId, -1)
 	if err != nil {
 		return "", err
 	}
 
-	return getCceClusterKubeConfig(cert, isExtranet)
+	newCert := &CreateKubernetesClusterCertResponse{
+		Kind:           autopilotCert.Kind,
+		ApiVersion:     autopilotCert.ApiVersion,
+		Preferences:    autopilotCert.Preferences,
+		Clusters:       autopilotCert.Clusters,
+		Users:          autopilotCert.Users,
+		Contexts:       autopilotCert.Contexts,
+		CurrentContext: autopilotCert.CurrentContext,
+		PortID:         autopilotCert.PortID,
+		HttpStatusCode: autopilotCert.HttpStatusCode,
+	}
+
+	return getCceClusterKubeConfig(newCert, isExtranet)
 }
 
-func getCceClusterKubeConfig(cert *model.CreateKubernetesClusterCertResponse, isExtranet bool) (string, error) {
+// GetCceClusterKubeConfig 获取cce集群 kubeconfig, 返回值base64编码. isExtranet: true 外部 false 内部
+func (cli *CceClient) GetCceClusterKubeConfig(clusterId string, isExtranet bool) (string, error) {
+	cert, err := cli.CreateCceKubernetesClusterCert(clusterId, -1)
+	if err != nil {
+		return "", err
+	}
+
+	newCert := &CreateKubernetesClusterCertResponse{
+		Kind:           cert.Kind,
+		ApiVersion:     cert.ApiVersion,
+		Preferences:    cert.Preferences,
+		Clusters:       cert.Clusters,
+		Users:          cert.Users,
+		Contexts:       cert.Contexts,
+		CurrentContext: cert.CurrentContext,
+		PortID:         cert.PortID,
+		HttpStatusCode: cert.HttpStatusCode,
+	}
+
+	return getCceClusterKubeConfig(newCert, isExtranet)
+}
+
+// GetAutopilotClusterKubeConfig 获取autopilot集群 kubeconfig, 返回值base64编码. isExtranet: true 外部 false 内部
+func (cli *CceClient) GetAutopilotClusterKubeConfig(clusterId string, isExtranet bool) (string, error) {
+	cert, err := cli.CreateAutopilotKubernetesClusterCert(clusterId, -1)
+	if err != nil {
+		return "", err
+	}
+
+	newCert := &CreateKubernetesClusterCertResponse{
+		Kind:           cert.Kind,
+		ApiVersion:     cert.ApiVersion,
+		Preferences:    cert.Preferences,
+		Clusters:       cert.Clusters,
+		Users:          cert.Users,
+		Contexts:       cert.Contexts,
+		CurrentContext: cert.CurrentContext,
+		PortID:         cert.PortID,
+		HttpStatusCode: cert.HttpStatusCode,
+	}
+
+	return getCceClusterKubeConfig(newCert, isExtranet)
+}
+
+func getCceClusterKubeConfig(cert *CreateKubernetesClusterCertResponse, isExtranet bool) (string, error) {
 	var (
 		kubeConfigType = "internalCluster"
 	)
@@ -700,6 +939,23 @@ func (cli *CceClient) CleanNodePoolNodes(clusterId string, nodeIds []string) err
 	}
 
 	return nil
+}
+
+func (cli *CceClient) UpdateAutopilotClusterEip(clusterId, id string) error {
+	action := model.GetMasterEipRequestSpecActionEnum().BIND
+	_, err := cli.cce.UpdateAutopilotClusterEip(&model.UpdateAutopilotClusterEipRequest{
+		ClusterId: clusterId,
+		Body: &model.MasterEipRequest{
+			Spec: &model.MasterEipRequestSpec{
+				Action: &action,
+				Spec: &model.MasterEipRequestSpecSpec{
+					Id: &id,
+				},
+			},
+		},
+	})
+
+	return err
 }
 
 // 节点池配置管理实现 实现组件参数管理

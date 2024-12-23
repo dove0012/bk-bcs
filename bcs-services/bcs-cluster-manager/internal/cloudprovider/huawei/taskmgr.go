@@ -29,6 +29,7 @@ import (
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/huawei/api"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/huawei/tasks"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/template"
+	icommon "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/common"
 )
 
 var taskMgr sync.Once
@@ -104,6 +105,17 @@ func (t *Task) BuildCreateClusterTask(cls *proto.Cluster, opt *cloudprovider.Cre
 		return nil, fmt.Errorf("BuildCreateClusterTask TaskOptions is lost")
 	}
 
+	nodeGroups := make([]*proto.NodeGroup, 0)
+	var desireSize uint32
+	for _, ngID := range opt.NodeGroupIDs {
+		nodeGroup, errGet := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), ngID)
+		if errGet != nil {
+			return nil, fmt.Errorf("BuildCreateClusterTask GetNodeGroupByGroupID failed, %s", errGet.Error())
+		}
+		nodeGroups = append(nodeGroups, nodeGroup)
+		desireSize += nodeGroup.AutoScaling.DesiredSize
+	}
+
 	nowStr := time.Now().Format(time.RFC3339)
 	task := &proto.Task{
 		TaskID:         uuid.New().String(),
@@ -127,87 +139,93 @@ func (t *Task) BuildCreateClusterTask(cls *proto.Cluster, opt *cloudprovider.Cre
 	task.CommonParams[cloudprovider.TaskNameKey.String()] = taskName
 
 	// setting all steps details
-	createClusterTask := &CreateClusterTaskOption{Cluster: cls}
+	createClusterTask := &CreateClusterTaskOption{Cluster: cls, NodeGroupIDs: opt.NodeGroupIDs}
 
 	// step1: createTKECluster and return clusterID inject common paras
 	createClusterTask.BuildCreateClusterStep(task)
 	// step2: check cluster status by clusterID
 	createClusterTask.BuildCheckClusterStatusStep(task)
-
-	// 获取节点池
-	for _, ngID := range opt.NodeGroupIDs {
-		nodeGroup, err := actions.GetNodeGroupByGroupID(cloudprovider.GetStorageModel(), ngID)
-		if err != nil {
-			return nil, fmt.Errorf("get nodegroup[%s] information failed, %s", ngID, err)
-		}
-
-		createClusterTask.NodeGroupID = ngID
-
-		// step3: create bcs nodegroup for cluster
-		createClusterTask.BuildCreateCCENodeGroupStep(task)
-		// step4: check cluster nodegroups status
-		createClusterTask.BuildCheckNodeGroupsStatusStep(task)
-
-		if nodeGroup.AutoScaling.DesiredSize > 0 {
-			// step5: check cluster nodes status
-			createClusterTask.BuildCheckClusterNodesStatusStep(task)
-			// step9: 若需要则设置节点注解
-			createClusterTask.BuildNodeAnnotationsTaskStep(task, cls.ClusterID, nil, cloudprovider.GetAnnotationsByNg(nodeGroup))
-			// step10: install gse agent
-			passwd := nodeGroup.LaunchTemplate.InitLoginPassword
-			task.CommonParams[cloudprovider.PasswordKey.String()] = passwd
-			createClusterTask.BuildInstallGseAgentTaskStep(task, &common.GseInstallInfo{
-				ClusterId:  cls.ClusterID,
-				BusinessId: cls.BusinessID,
-				CloudArea:  nodeGroup.GetArea(),
-				User:       nodeGroup.GetLaunchTemplate().GetInitLoginUsername(),
-				Passwd:     passwd,
-				KeyInfo:    nodeGroup.GetLaunchTemplate().GetKeyPair(),
-				Port:       "",
-			})
-
-			// step11: transfer host module
-			if cls.GetBusinessID() != "" && cls.GetClusterBasicSettings().GetModule().GetWorkerModuleID() != "" {
-				createClusterTask.BuildTransferHostModuleStep(task, cls.GetBusinessID(),
-					cls.GetClusterBasicSettings().GetModule().GetWorkerModuleID(), "")
-			}
-
-			// step4. business define sops task 支持脚本和标准运维流程
-			if nodeGroup.NodeTemplate != nil && len(nodeGroup.NodeTemplate.UserScript) > 0 {
-				createClusterTask.BuildJobExecuteScriptStep(task, common.JobExecParas{
-					ClusterID:        nodeGroup.ClusterID,
-					Content:          nodeGroup.NodeTemplate.UserScript,
-					NodeIps:          "",
-					Operator:         opt.Operator,
-					StepName:         common.PostInitStepJob,
-					AllowSkipJobTask: nodeGroup.NodeTemplate.GetAllowSkipScaleOutWhenFailed(),
-				})
-			}
-
-			if nodeGroup.NodeTemplate != nil && nodeGroup.NodeTemplate.ScaleOutExtraAddons != nil {
-				err := template.BuildSopsFactory{
-					StepName: template.UserAfterInit,
-					Cluster:  cls,
-					Extra: template.ExtraInfo{
-						InstancePasswd:     passwd,
-						NodeIPList:         "",
-						NodeOperator:       opt.Operator,
-						ShowSopsUrl:        true,
-						ExternalNodeScript: "",
-						NodeGroupID:        nodeGroup.NodeGroupID,
-						TranslateMethod:    template.UserPostInit,
-					}}.BuildSopsStep(task, nodeGroup.NodeTemplate.ScaleOutExtraAddons, false)
-				if err != nil {
-					return nil, fmt.Errorf("BuildScalingNodesTask business BuildBkSopsStepAction failed: %v", err)
-				}
-			}
-		}
-	}
-	// step6: register cluster kubeConfig
+	// step2: register managed cluster kubeConfig
 	createClusterTask.BuildRegisterClsKubeConfigStep(task)
 	// step7: update DB info by cluster data
 	createClusterTask.BuildUpdateTaskStatusStep(task)
-	// step8: install cluster watch component
+
+	if cls.ManageType == icommon.ClusterManageTypeIndependent {
+		if len(nodeGroups) != 0 {
+			// step3: create bcs nodegroup for cluster
+			createClusterTask.BuildCreateCCENodeGroupStep(task)
+			// step3: check cluster nodes status
+			createClusterTask.BuildCheckNodeGroupsStatusStep(task)
+		}
+
+		if desireSize != 0 {
+			// step5: check cluster nodegroups status
+			createClusterTask.BuildCheckClusterNodesStatusStep(task)
+		}
+	}
+
+	if cls.ManageType == icommon.ClusterManageTypeIndependent && desireSize != 0 {
+		createClusterTask.BuildInstallGseAgentTaskStep(task, &common.GseInstallInfo{
+			ClusterId:          cls.ClusterID,
+			BusinessId:         cls.BusinessID,
+			CloudArea:          cls.GetClusterBasicSettings().GetArea(),
+			User:               nodeGroups[0].GetLaunchTemplate().GetInitLoginUsername(),
+			Passwd:             nodeGroups[0].GetLaunchTemplate().GetInitLoginPassword(),
+			KeyInfo:            nodeGroups[0].GetLaunchTemplate().GetKeyPair(),
+			AllowReviseCloudId: icommon.True,
+		}, cloudprovider.WithStepAllowSkip(true))
+
+		// step8: transfer host module
+		moduleID := cls.GetClusterBasicSettings().GetModule().GetWorkerModuleID()
+		if moduleID != "" {
+			common.BuildTransferHostModuleStep(task, cls.BusinessID, cls.GetClusterBasicSettings().GetModule().
+				GetWorkerModuleID(), cls.GetClusterBasicSettings().GetModule().GetMasterModuleID())
+		}
+
+		// step9: 业务后置自定义流程: 支持标准运维任务 或者 后置脚本
+		if len(nodeGroups) > 0 && nodeGroups[0].GetNodeTemplate() != nil &&
+			len(nodeGroups[0].GetNodeTemplate().UserScript) > 0 {
+			common.BuildJobExecuteScriptStep(task, common.JobExecParas{
+				ClusterID: cls.ClusterID,
+				Content:   nodeGroups[0].GetNodeTemplate().UserScript,
+				// dynamic node ips
+				NodeIps:   "",
+				Operator:  opt.Operator,
+				StepName:  common.PostInitStepJob,
+				Translate: common.PostInitJob,
+			})
+		}
+		// business post define sops task or script
+		if len(nodeGroups) > 0 && nodeGroups[0].GetNodeTemplate() != nil &&
+			nodeGroups[0].GetNodeTemplate().ScaleOutExtraAddons != nil {
+			err := template.BuildSopsFactory{
+				StepName: template.UserAfterInit,
+				Cluster:  cls,
+				Extra: template.ExtraInfo{
+					// dynamic node ips
+					NodeIPList:      "",
+					NodeOperator:    opt.Operator,
+					ShowSopsUrl:     true,
+					TranslateMethod: template.UserPostInit,
+				}}.BuildSopsStep(task, nodeGroups[0].GetNodeTemplate().ScaleOutExtraAddons, false)
+			if err != nil {
+				return nil, fmt.Errorf("BuildCreateClusterTask business BuildBkSopsStepAction failed: %v", err)
+			}
+		}
+
+		// step10: 若需要则设置节点注解
+		common.BuildNodeAnnotationsTaskStep(task, cls.ClusterID, nil, func() map[string]string {
+			if opt.NodeTemplate != nil && len(opt.NodeTemplate.GetAnnotations()) > 0 {
+				return opt.NodeTemplate.GetAnnotations()
+			}
+			return nil
+		}())
+
+		// step11: remove inner nodes taints
+		common.BuildRemoveInnerTaintTaskStep(task, cls.ClusterID, cls.Provider)
+	}
+
+	// step12: install cluster watch component
 	common.BuildWatchComponentTaskStep(task, cls, "")
 
 	// set current step

@@ -72,10 +72,15 @@ func DeleteClusterTask(taskID string, stepName string) error { // nolint
 
 	ctx := cloudprovider.WithTaskIDForContext(context.Background(), taskID)
 
-	blog.Infof("DeleteTKEClusterTask[%s]  clusterInfo: %v", taskID, dependInfo.Cluster.GetStatus())
+	blog.Infof("DeleteClusterTask[%s]  clusterInfo: %v", taskID, dependInfo.Cluster.GetStatus())
 
-	if (clusterStatus == icommon.StatusCreateClusterFailed ||
-		clusterStatus == icommon.StatusDeleteClusterFailed) && dependInfo.Cluster.GetSystemID() != "" {
+	isAutopilot := false
+	if dependInfo.Cluster.ManageType == icommon.ClusterManageTypeManaged {
+		isAutopilot = true
+	}
+
+	if (clusterStatus == icommon.StatusCreateClusterFailed || clusterStatus == icommon.StatusDeleteClusterFailed) &&
+		dependInfo.Cluster.SystemID != "" && !isAutopilot {
 		nodes, listErr := client.ListClusterNodes(dependInfo.Cluster.SystemID)
 		if listErr != nil {
 			return listErr
@@ -98,12 +103,11 @@ func DeleteClusterTask(taskID string, stepName string) error { // nolint
 			blog.Errorf("DeleteClusterTask[%s] CheckClusterDeletedNodes failed: %v", taskID, err)
 		}
 	}
-
-	err = business.DeleteTkeClusterByClusterId(ctx, dependInfo.CmOption, dependInfo.Cluster.SystemID, deleteMode)
+	err = business.DeleteClusterByClusterId(ctx, dependInfo.CmOption, dependInfo.Cluster.SystemID, deleteMode, isAutopilot)
 	if err != nil {
 		blog.Errorf("DeleteClusterTask[%s]: task[%s] step[%s] call huawei DeleteCluster failed: %v",
 			taskID, taskID, stepName, err)
-		retErr := fmt.Errorf("call huawei DeleteTKECluster failed: %s", err.Error())
+		retErr := fmt.Errorf("call huawei DeleteCluster failed: %s", err.Error())
 		_ = state.UpdateStepFailure(start, stepName, retErr)
 
 		_ = cloudprovider.UpdateClusterErrMessage(clusterID, fmt.Sprintf("delete cluster[%s] failed: %v",

@@ -240,3 +240,8 @@ func (c *VPCManager) GetClusterIpUsage(clusterId string, ipType string, opt *clo
 	uint32, uint32, error) {
 	return 0, 0, nil
 }
+
+// ListPublicIP list public ip
+func (vm *VPCManager) ListPublicIP(opt *cloudprovider.CommonOption) ([]*proto.PublicIPInfo, error) {
+	return nil, nil
+}

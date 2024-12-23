@@ -102,7 +102,7 @@ func CheckClusterDeletedNodes(ctx context.Context, info *cloudprovider.CloudDepe
 	err = loop.LoopDoFunc(timeCtx, func() error {
 		instances, errQuery := cli.ListClusterNodes(info.Cluster.GetSystemID())
 		if errQuery != nil {
-			blog.Errorf("CheckClusterDeletedNodes[%s] QueryTkeClusterAllInstances failed: %v", taskID, errQuery)
+			blog.Errorf("CheckClusterDeletedNodes[%s] QueryClusterAllInstances failed: %v", taskID, errQuery)
 			return nil
 		}
 
@@ -134,29 +134,33 @@ func CheckClusterDeletedNodes(ctx context.Context, info *cloudprovider.CloudDepe
 	return nil
 }
 
-// DeleteTkeClusterByClusterId delete cluster by clusterId
-func DeleteTkeClusterByClusterId(ctx context.Context, opt *cloudprovider.CommonOption,
-	clsId string, deleteMode string) error {
+// DeleteClusterByClusterId delete cluster by clusterId
+func DeleteClusterByClusterId(ctx context.Context, opt *cloudprovider.CommonOption,
+	clsId, deleteMode string, isAutopilot bool) error {
 	taskID := cloudprovider.GetTaskIDFromContext(ctx)
 
 	if len(clsId) == 0 {
-		blog.Warnf("DeleteTkeClusterByClusterId[%s] clusterID empty", taskID)
+		blog.Warnf("DeleteClusterByClusterId[%s] clusterID empty", taskID)
 		return nil
 	}
 
 	cli, err := api.NewCceClient(opt)
 	if err != nil {
-		blog.Errorf("DeleteTkeClusterByClusterId[%s] init tkeClient failed: %v", taskID, err)
+		blog.Errorf("DeleteClusterByClusterId[%s] init cce client failed: %v", taskID, err)
 		return err
 	}
 
-	err = cli.DeleteCceCluster(clsId)
+	if isAutopilot {
+		err = cli.DeleteAutopilotCluster(clsId)
+	} else {
+		err = cli.DeleteCceCluster(clsId)
+	}
 	if err != nil && !strings.Contains(err.Error(), "Resource not found") {
-		blog.Errorf("DeleteTkeClusterByClusterId[%s] deleteCluster failed: %v", taskID, err)
+		blog.Errorf("DeleteClusterByClusterId[%s] deleteCluster failed: %v", taskID, err)
 		return err
 	}
 
-	blog.Infof("DeleteTkeClusterByClusterId[%s] deleteCluster[%s] success", taskID, clsId)
+	blog.Infof("DeleteClusterByClusterId[%s] deleteCluster[%s] success", taskID, clsId)
 
 	return nil
 }

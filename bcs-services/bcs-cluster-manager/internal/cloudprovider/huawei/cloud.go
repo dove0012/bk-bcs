@@ -20,7 +20,6 @@ import (
 	"sync"
 
 	"github.com/Tencent/bk-bcs/bcs-common/common/blog"
-	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cce/v3/model"
 
 	cmproto "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/api/clustermanager"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider"
@@ -66,15 +65,21 @@ func (c *CloudInfoManager) SyncClusterCloudInfo(cls *cmproto.Cluster,
 		return err
 	}
 
-	cluster, err := client.GetCceCluster(opt.ImportMode.CloudID)
+	cluster, err := client.GetCluster(opt.ImportMode.CloudID)
 	if err != nil {
 		return err
 	}
 
-	kubeConfig, err := client.GetClusterKubeConfig(opt.ImportMode.CloudID, !opt.ImportMode.Inter)
+	var kubeConfig string
+	if utils.BoolPtrToBool(cluster.Spec.EnableAutopilot) {
+		kubeConfig, err = client.GetAutopilotClusterKubeConfig(opt.ImportMode.CloudID, !opt.ImportMode.Inter)
+	} else {
+		kubeConfig, err = client.GetCceClusterKubeConfig(opt.ImportMode.CloudID, !opt.ImportMode.Inter)
+	}
 	if err != nil {
 		return fmt.Errorf("SyncClusterCloudInfo GetClusterKubeConfig failed: %v", err)
 	}
+
 	cls.KubeConfig, _ = encrypt.Encrypt(nil, kubeConfig)
 
 	cls.SystemID = *cluster.Metadata.Uid
@@ -99,7 +104,7 @@ func (c *CloudInfoManager) UpdateClusterCloudInfo(cls *cmproto.Cluster) error {
 	return nil
 }
 
-func clusterBasicSettingByCCE(cls *cmproto.Cluster, cluster *model.ShowClusterResponse,
+func clusterBasicSettingByCCE(cls *cmproto.Cluster, cluster *api.Cluster,
 	opt *cloudprovider.SyncClusterCloudInfoOption) {
 	cls.ClusterBasicSettings = &cmproto.ClusterBasicSetting{
 		Area: opt.Area,
@@ -111,10 +116,10 @@ func clusterBasicSettingByCCE(cls *cmproto.Cluster, cluster *model.ShowClusterRe
 	}
 }
 
-func clusterAdvancedSettingByCce(cls *cmproto.Cluster, cluster *model.ShowClusterResponse) {
+func clusterAdvancedSettingByCce(cls *cmproto.Cluster, cluster *api.Cluster) {
 	cls.ClusterAdvanceSettings = &cmproto.ClusterAdvanceSetting{
 		IPVS: func() bool {
-			if cluster.Spec != nil && cluster.Spec.KubeProxyMode.Value() == common.Ipvs {
+			if cluster.Spec != nil && cluster.Spec.KubeProxyMode == common.Ipvs {
 				return true
 			}
 
@@ -122,7 +127,7 @@ func clusterAdvancedSettingByCce(cls *cmproto.Cluster, cluster *model.ShowCluste
 		}(),
 		NetworkType: func() string {
 			if cluster.Spec != nil && cluster.Spec.ContainerNetwork != nil {
-				return cluster.Spec.ContainerNetwork.Mode.Value()
+				return cluster.Spec.ContainerNetwork.Mode
 			}
 
 			return ""
@@ -130,7 +135,7 @@ func clusterAdvancedSettingByCce(cls *cmproto.Cluster, cluster *model.ShowCluste
 	}
 }
 
-func clusterNetworkSettingByCCE(cls *cmproto.Cluster, cluster *model.ShowClusterResponse) error {
+func clusterNetworkSettingByCCE(cls *cmproto.Cluster, cluster *api.Cluster) error {
 	cls.NetworkSettings = &cmproto.NetworkSetting{}
 
 	if cluster.Spec != nil {

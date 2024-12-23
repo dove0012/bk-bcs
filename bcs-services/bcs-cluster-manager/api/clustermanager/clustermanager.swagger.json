@@ -1622,6 +1622,53 @@
         ]
       }
     },
+    "/clustermanager/v1/clouds/{cloudID}/ips": {
+      "get": {
+        "summary": "查询云公网IP列表",
+        "description": "查询云公网IP列表",
+        "operationId": "ClusterManager_GetCloudPublicIPs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/clustermanagerGetCloudPublicIPsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "schema": {
+              "$ref": "#/definitions/runtimeError"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cloudID",
+            "description": "云信息",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "region",
+            "description": "region. 云地域信息",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "accountID",
+            "description": "accountID. 云凭证ID, 通过指定的云账号信息获取",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterManager"
+        ]
+      }
+    },
     "/clustermanager/v1/clouds/{cloudID}/keypairs": {
       "get": {
         "summary": "查询密钥对列表",
@@ -12279,6 +12326,42 @@
         "message"
       ]
     },
+    "clustermanagerGetCloudPublicIPsResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int64",
+          "description": "返回错误码",
+          "title": "code"
+        },
+        "message": {
+          "type": "string",
+          "description": "返回错误信息",
+          "title": "message"
+        },
+        "result": {
+          "type": "boolean",
+          "format": "boolean",
+          "description": "返回结果",
+          "title": "result"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/clustermanagerPublicIPInfo"
+          },
+          "description": "获取云公网IP列表",
+          "title": "data"
+        }
+      },
+      "description": "查询云公网IP列表",
+      "title": "GetCloudPublicIPsResponse",
+      "required": [
+        "code",
+        "message"
+      ]
+    },
     "clustermanagerGetCloudRegionZonesResponse": {
       "type": "object",
       "properties": {
@@ -14017,11 +14100,6 @@
           "type": "string",
           "description": "共享带宽包ID",
           "title": "bandwidthPackageId"
-        },
-        "publicIP": {
-          "type": "string",
-          "description": "公网ip地址",
-          "title": "publicIP"
         },
         "publicAccessCidrs": {
           "type": "array",
@@ -17159,6 +17237,20 @@
           "additionalProperties": {
             "type": "object"
           }
+        }
+      }
+    },
+    "clustermanagerPublicIPInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ip": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
         }
       }
     },

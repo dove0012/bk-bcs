@@ -176,8 +176,8 @@ var (
 
 // CreateClusterTaskOption 创建集群构建step子任务
 type CreateClusterTaskOption struct {
-	Cluster     *proto.Cluster
-	NodeGroupID string
+	Cluster      *proto.Cluster
+	NodeGroupIDs []string
 }
 
 // BuildCreateClusterStep 创建集群任务
@@ -185,7 +185,6 @@ func (cn *CreateClusterTaskOption) BuildCreateClusterStep(task *proto.Task) {
 	createStep := cloudprovider.InitTaskStep(createClusterStep)
 	createStep.Params[cloudprovider.ClusterIDKey.String()] = cn.Cluster.ClusterID
 	createStep.Params[cloudprovider.CloudIDKey.String()] = cn.Cluster.Provider
-	createStep.Params[cloudprovider.NodeGroupIDKey.String()] = cn.NodeGroupID
 
 	task.Steps[createClusterStep.StepMethod] = createStep
 	task.StepSequence = append(task.StepSequence, createClusterStep.StepMethod)
@@ -227,10 +226,10 @@ func (cn *CreateClusterTaskOption) BuildCreateCCENodeGroupStep(task *proto.Task)
 	createStep := cloudprovider.InitTaskStep(createCCENodeGroupStep)
 	createStep.Params[cloudprovider.ClusterIDKey.String()] = cn.Cluster.ClusterID
 	createStep.Params[cloudprovider.CloudIDKey.String()] = cn.Cluster.Provider
-	createStep.Params[cloudprovider.NodeGroupIDKey.String()] = cn.NodeGroupID
+	createStep.Params[cloudprovider.NodeGroupIDKey.String()] = strings.Join(cn.NodeGroupIDs, ",")
 
-	task.Steps[createCCENodeGroupStep.StepMethod+"-"+cn.NodeGroupID] = createStep
-	task.StepSequence = append(task.StepSequence, createCCENodeGroupStep.StepMethod+"-"+cn.NodeGroupID)
+	task.Steps[createCCENodeGroupStep.StepMethod] = createStep
+	task.StepSequence = append(task.StepSequence, createCCENodeGroupStep.StepMethod)
 }
 
 // BuildCheckNodeGroupsStatusStep 检测集群节点池状态任务
@@ -238,10 +237,10 @@ func (cn *CreateClusterTaskOption) BuildCheckNodeGroupsStatusStep(task *proto.Ta
 	checkStep := cloudprovider.InitTaskStep(checkCCENodeGroupsStatusStep)
 	checkStep.Params[cloudprovider.ClusterIDKey.String()] = cn.Cluster.ClusterID
 	checkStep.Params[cloudprovider.CloudIDKey.String()] = cn.Cluster.Provider
-	checkStep.Params[cloudprovider.NodeGroupIDKey.String()] = cn.NodeGroupID
+	checkStep.Params[cloudprovider.NodeGroupIDKey.String()] = strings.Join(cn.NodeGroupIDs, ",")
 
-	task.Steps[checkCCENodeGroupsStatusStep.StepMethod+"-"+cn.NodeGroupID] = checkStep
-	task.StepSequence = append(task.StepSequence, checkCCENodeGroupsStatusStep.StepMethod+"-"+cn.NodeGroupID)
+	task.Steps[checkCCENodeGroupsStatusStep.StepMethod] = checkStep
+	task.StepSequence = append(task.StepSequence, checkCCENodeGroupsStatusStep.StepMethod)
 }
 
 // BuildCheckClusterNodesStatusStep 检测创建集群节点状态任务
@@ -249,10 +248,10 @@ func (cn *CreateClusterTaskOption) BuildCheckClusterNodesStatusStep(task *proto.
 	checkStep := cloudprovider.InitTaskStep(checkCreateClusterNodeStatusStep)
 	checkStep.Params[cloudprovider.ClusterIDKey.String()] = cn.Cluster.ClusterID
 	checkStep.Params[cloudprovider.CloudIDKey.String()] = cn.Cluster.Provider
-	checkStep.Params[cloudprovider.NodeGroupIDKey.String()] = cn.NodeGroupID
+	checkStep.Params[cloudprovider.NodeGroupIDKey.String()] = strings.Join(cn.NodeGroupIDs, ",")
 
-	task.Steps[checkCreateClusterNodeStatusStep.StepMethod+"-"+cn.NodeGroupID] = checkStep
-	task.StepSequence = append(task.StepSequence, checkCreateClusterNodeStatusStep.StepMethod+"-"+cn.NodeGroupID)
+	task.Steps[checkCreateClusterNodeStatusStep.StepMethod] = checkStep
+	task.StepSequence = append(task.StepSequence, checkCreateClusterNodeStatusStep.StepMethod)
 }
 
 // BuildNodeAnnotationsTaskStep build node annotations (user define labels && common annotations) task step
@@ -267,8 +266,8 @@ func (cn *CreateClusterTaskOption) BuildNodeAnnotationsTaskStep(task *proto.Task
 	// annotationsStep.Params[cloudprovider.NodeIPsKey.String()] = strings.Join(nodeIPs, ",")
 	annotationsStep.Params[cloudprovider.AnnotationsKey.String()] = utils.MapToStrings(annotations)
 
-	task.Steps[nodeSetAnnotationsActionStep.StepMethod+"-"+cn.NodeGroupID] = annotationsStep
-	task.StepSequence = append(task.StepSequence, nodeSetAnnotationsActionStep.StepMethod+"-"+cn.NodeGroupID)
+	task.Steps[nodeSetAnnotationsActionStep.StepMethod] = annotationsStep
+	task.StepSequence = append(task.StepSequence, nodeSetAnnotationsActionStep.StepMethod)
 }
 
 // BuildInstallGseAgentTaskStep build install gse agent task step
@@ -293,8 +292,8 @@ func (cn *CreateClusterTaskOption) BuildInstallGseAgentTaskStep(task *proto.Task
 	}
 	installGseStep.Params[cloudprovider.AllowReviseAgent.String()] = gseInfo.AllowReviseCloudId
 
-	task.Steps[installGseAgentStep.StepMethod+"-"+cn.NodeGroupID] = installGseStep
-	task.StepSequence = append(task.StepSequence, installGseAgentStep.StepMethod+"-"+cn.NodeGroupID)
+	task.Steps[installGseAgentStep.StepMethod] = installGseStep
+	task.StepSequence = append(task.StepSequence, installGseAgentStep.StepMethod)
 }
 
 // BuildTransferHostModuleStep build transfer host module step
@@ -306,8 +305,8 @@ func (cn *CreateClusterTaskOption) BuildTransferHostModuleStep(task *proto.Task,
 	transStep.Params[cloudprovider.BKModuleIDKey.String()] = moduleID
 	transStep.Params[cloudprovider.BKMasterModuleIDKey.String()] = masterModuleID
 
-	task.Steps[transferHostModuleStep.StepMethod+"-"+cn.NodeGroupID] = transStep
-	task.StepSequence = append(task.StepSequence, transferHostModuleStep.StepMethod+"-"+cn.NodeGroupID)
+	task.Steps[transferHostModuleStep.StepMethod] = transStep
+	task.StepSequence = append(task.StepSequence, transferHostModuleStep.StepMethod)
 }
 
 // BuildJobExecuteScriptStep build job execute script step
@@ -329,8 +328,8 @@ func (cn *CreateClusterTaskOption) BuildJobExecuteScriptStep(task *proto.Task, p
 	jobScriptStep.Params[cloudprovider.NodeIPsKey.String()] = paras.NodeIps
 	jobScriptStep.Params[cloudprovider.OperatorKey.String()] = paras.Operator
 
-	task.Steps[jobExecuteScriptStep.StepMethod+"-"+cn.NodeGroupID] = jobScriptStep
-	task.StepSequence = append(task.StepSequence, jobExecuteScriptStep.StepMethod+"-"+cn.NodeGroupID)
+	task.Steps[jobExecuteScriptStep.StepMethod] = jobScriptStep
+	task.StepSequence = append(task.StepSequence, jobExecuteScriptStep.StepMethod)
 }
 
 // DeleteClusterTaskOption 删除集群

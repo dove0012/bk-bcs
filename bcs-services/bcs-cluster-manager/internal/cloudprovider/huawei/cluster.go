@@ -178,14 +178,14 @@ func (c *Cluster) ListCluster(opt *cloudprovider.ListClusterOption) ([]*proto.Cl
 	}
 
 	cloudClusterList := make([]*proto.CloudClusterInfo, 0)
-	for _, v := range *clusters {
+	for _, v := range clusters {
 		cloudClusterList = append(cloudClusterList, &proto.CloudClusterInfo{
-			ClusterID:          *v.Metadata.Uid,
+			ClusterID:          utils.StringPtrToString(v.Metadata.Uid),
 			ClusterName:        v.Metadata.Name,
-			ClusterDescription: *v.Metadata.Alias,
-			ClusterVersion:     *v.Spec.Version,
-			ClusterOS:          v.Spec.Type.Value(),
-			ClusterStatus:      *v.Status.Phase,
+			ClusterDescription: utils.StringPtrToString(v.Spec.Description),
+			ClusterVersion:     utils.StringPtrToString(v.Spec.Version),
+			ClusterOS:          v.Spec.Type,
+			ClusterStatus:      utils.StringPtrToString(v.Status.Phase),
 			Location:           opt.Region,
 		})
 	}
@@ -228,7 +228,7 @@ func (c *Cluster) CheckClusterEndpointStatus(clusterID string, isExtranet bool,
 		return false, err
 	}
 
-	cluster, err := cli.GetCceCluster(clusterID)
+	cluster, err := cli.GetCluster(clusterID)
 	if err != nil {
 		return false, err
 	}
@@ -236,7 +236,13 @@ func (c *Cluster) CheckClusterEndpointStatus(clusterID string, isExtranet bool,
 		return false, fmt.Errorf("cluster status is not available")
 	}
 
-	kubeConfig, err := cli.GetClusterKubeConfig(clusterID, isExtranet)
+	var kubeConfig string
+	if utils.BoolPtrToBool(cluster.Spec.EnableAutopilot) {
+		kubeConfig, err = cli.GetAutopilotClusterKubeConfig(clusterID, isExtranet)
+	} else {
+		kubeConfig, err = cli.GetCceClusterKubeConfig(clusterID, isExtranet)
+	}
+
 	if err != nil {
 		return false, err
 	}

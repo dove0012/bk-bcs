@@ -65,3 +65,13 @@ func (e *EipClient) GetAllBandwidths() ([]model.BandwidthResponseBody, error) {
 
 	return *rsp.EipBandwidths, nil
 }
+
+// GetAllBandwidths get all bandwidths
+func (e *EipClient) GetAllPublicIps() ([]model.PublicipSingleShowResp, error) {
+	rsp, err := e.eip.ListPublicips(&model.ListPublicipsRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	return *rsp.Publicips, nil
+}

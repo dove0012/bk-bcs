@@ -250,16 +250,16 @@ func (nm *NodeManager) ListRuntimeInfo(opt *cloudprovider.ListRuntimeInfoOption)
 		return nil, err
 	}
 
-	rsp, err := client.GetCceCluster(opt.Cluster.SystemID)
+	rsp, err := client.GetCluster(opt.Cluster.SystemID)
 	if err != nil {
 		return nil, err
 	}
 
 	if rsp.Spec.Version == nil {
-		return nil, fmt.Errorf("cloud cluster version is nil")
+		return nil, fmt.Errorf("cloud cluster version is empty")
 	}
 
-	blog.Infof("cluster version: %s", *rsp.Spec.Version)
+	blog.Infof("cluster version: %s", rsp.Spec.Version)
 
 	runtimeInfo := make(map[string][]string)
 

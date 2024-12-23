@@ -1274,6 +1274,15 @@ service ClusterManager {
       summary : "查询云共享带宽包"
     };
   }
+  rpc GetCloudPublicIPs(GetCloudPublicIPsRequest) returns (GetCloudPublicIPsResponse) {
+    option (google.api.http) = {
+      get : "/clustermanager/v1/clouds/{cloudID}/ips"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      description : "查询云公网IP列表"
+      summary : "查询云公网IP列表"
+    };
+  }
   rpc ListCloudRuntimeInfo(ListCloudRuntimeInfoRequest) returns (ListCloudRuntimeInfoResponse) {
     option (google.api.http) = {
       get : "/clustermanager/v1/clouds/{cloudID}/runtimeinfo"
@@ -3771,11 +3780,7 @@ message InternetAccessible {
     title: "bandwidthPackageId",
     description: "共享带宽包ID"
   }];
-  string publicIP = 5[(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
-    title: "publicIP",
-    description: "公网ip地址"
-  }];
-  repeated string publicAccessCidrs = 6[(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+  repeated string publicAccessCidrs = 5[(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
     title: "publicAccessCidrs",
     description: "允许访问Kubernetes API Server的公网Ip cidr"
   }];
@@ -14767,4 +14772,59 @@ message ProjectAutoscalerQuota {
     title : "totalGroupIds",
     description : "机型在某个可用区的总额度的节点池"
   }];
+}
+
+message GetCloudPublicIPsRequest {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema : {
+      title : "GetCloudPublicIPsRequest"
+      description : "查询云公网IP列表"
+    }
+  };
+
+  string cloudID = 1 [(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title : "cloudID",
+    description : "云信息"
+  },(validate.rules).string = {min_len : 1}];
+  string region = 2 [(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title : "region",
+    description : "云地域信息"
+  },(validate.rules).string = {min_len : 1}];
+  string accountID = 3 [(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title : "accountID",
+    description : "云凭证ID, 通过指定的云账号信息获取"
+  }];
+}
+
+message GetCloudPublicIPsResponse {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema : {
+      title : "GetCloudPublicIPsResponse"
+      description : "查询云公网IP列表"
+      required : [ "code", "message" ]
+    }
+  };
+
+  uint32 code = 1 [(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title : "code",
+    description : "返回错误码"
+  }];
+  string message = 2[(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title : "message",
+    description : "返回错误信息"
+  }];
+  bool result = 3 [ (grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title : "result",
+    description : "返回结果"
+  }];
+  repeated PublicIPInfo data = 4 [(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title : "data",
+    description : "获取云公网IP列表"
+  }];
+}
+
+message PublicIPInfo {
+  string id = 1;
+  string ip = 2;
+  string status = 3;
 }

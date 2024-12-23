@@ -428,6 +428,15 @@ func StringPtrToString(str *string) string {
 	return *str
 }
 
+// BoolPtrToBool ptrBool to bool
+func BoolPtrToBool(b *bool) bool {
+	if b == nil {
+		return false
+	}
+
+	return *b
+}
+
 // Int64PtrToInt64 ptrInt64 to int64
 func Int64PtrToInt64(num *int64) int64 {
 	if num == nil {
