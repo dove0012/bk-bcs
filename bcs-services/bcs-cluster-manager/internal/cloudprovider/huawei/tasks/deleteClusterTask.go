@@ -20,7 +20,6 @@ import (
 	"github.com/Tencent/bk-bcs/bcs-common/common/blog"
 
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider"
-	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/huawei/api"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/huawei/business"
 	"github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/cloudprovider/utils"
 	icommon "github.com/Tencent/bk-bcs/bcs-services/bcs-cluster-manager/internal/common"
@@ -46,7 +45,6 @@ func DeleteClusterTask(taskID string, stepName string) error { // nolint
 	clusterID := step.Params[cloudprovider.ClusterIDKey.String()]
 	cloudID := step.Params[cloudprovider.CloudIDKey.String()]
 	deleteMode := step.Params[cloudprovider.DeleteModeKey.String()]
-	clusterStatus := step.Params[cloudprovider.LastClusterStatus.String()]
 
 	// only support retain mode
 	if deleteMode != cloudprovider.Retain.String() {
@@ -65,11 +63,6 @@ func DeleteClusterTask(taskID string, stepName string) error { // nolint
 		return retErr
 	}
 
-	client, err := api.NewCceClient(dependInfo.CmOption)
-	if err != nil {
-		return err
-	}
-
 	ctx := cloudprovider.WithTaskIDForContext(context.Background(), taskID)
 
 	blog.Infof("DeleteClusterTask[%s]  clusterInfo: %v", taskID, dependInfo.Cluster.GetStatus())
@@ -79,30 +72,6 @@ func DeleteClusterTask(taskID string, stepName string) error { // nolint
 		isAutopilot = true
 	}
 
-	if (clusterStatus == icommon.StatusCreateClusterFailed || clusterStatus == icommon.StatusDeleteClusterFailed) &&
-		dependInfo.Cluster.SystemID != "" && !isAutopilot {
-		nodes, listErr := client.ListClusterNodes(dependInfo.Cluster.SystemID)
-		if listErr != nil {
-			return listErr
-		}
-
-		ids, delErr := business.DeleteClusterInstance(client, dependInfo.Cluster.SystemID, nodes)
-		if delErr != nil {
-			blog.Errorf("DeleteClusterTask[%s] DeleteClusterInstance failed: %v", taskID, delErr)
-		} else {
-			blog.Infof("DeleteClusterTask[%s] DeleteClusterInstance success: %v", taskID, ids)
-		}
-
-		nodeIds := make([]string, 0)
-		for _, node := range nodes {
-			nodeIds = append(nodeIds, *node.Metadata.Uid)
-		}
-
-		err = business.CheckClusterDeletedNodes(ctx, dependInfo, nodeIds)
-		if err != nil {
-			blog.Errorf("DeleteClusterTask[%s] CheckClusterDeletedNodes failed: %v", taskID, err)
-		}
-	}
 	err = business.DeleteClusterByClusterId(ctx, dependInfo.CmOption, dependInfo.Cluster.SystemID, deleteMode, isAutopilot)
 	if err != nil {
 		blog.Errorf("DeleteClusterTask[%s]: task[%s] step[%s] call huawei DeleteCluster failed: %v",

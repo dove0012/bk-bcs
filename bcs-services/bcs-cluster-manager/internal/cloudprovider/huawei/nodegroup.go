@@ -115,7 +115,71 @@ func (ng *NodeGroup) UpdateNodeGroup(group *proto.NodeGroup, opt *cloudprovider.
 
 // RecommendNodeGroupConf recommends nodegroup configs
 func (ng *NodeGroup) RecommendNodeGroupConf(opt *cloudprovider.CommonOption) ([]*proto.RecommendNodeGroupConf, error) {
-	return nil, cloudprovider.ErrCloudNotImplemented
+	if opt == nil {
+		return nil, fmt.Errorf("invalid request")
+	}
+
+	mgr := NodeManager{}
+	insTypes, err := mgr.ListNodeInstanceType(cloudprovider.InstanceInfo{
+		Region: opt.Region,
+		Cpu:    8,
+		Memory: 16,
+	}, opt)
+	if err != nil {
+		return nil, fmt.Errorf("list node instance type failed, %s", err.Error())
+	}
+
+	validInsTypes := make([]*proto.InstanceType, 0)
+	for _, in := range insTypes {
+		if in.Status == common.InstanceSell {
+			validInsTypes = append(validInsTypes, in)
+		}
+	}
+	if len(validInsTypes) == 0 {
+		return nil, fmt.Errorf("RecommendNodeGroupConf no valid instanceType for 8c16g")
+	}
+
+	configs := make([]*proto.RecommendNodeGroupConf, 0)
+	configs = append(configs,
+		generateNodeGroupConf(validInsTypes[0]),
+	)
+
+	return configs, nil
+}
+
+func generateNodeGroupConf(t *proto.InstanceType) *proto.RecommendNodeGroupConf {
+	return &proto.RecommendNodeGroupConf{
+		Name:  "default",
+		Zones: t.Zones,
+		InstanceProfile: &proto.InstanceProfile{
+			NodeOS:             "Huawei Cloud EulerOS 2.0",
+			InstanceType:       t.NodeType,
+			InstanceChargeType: "TRAFFIC_POSTPAID_BY_HOUR",
+		},
+		HardwareProfile: &proto.HardwareProfile{
+			CPU: 8,
+			Mem: 16,
+			SystemDisk: &proto.DataDisk{
+				DiskType: "ESSD",
+				DiskSize: "100",
+			},
+			DataDisks: []*proto.DataDisk{
+				{
+					DiskType: "ESSD",
+					DiskSize: "100",
+				},
+			},
+		},
+		NetworkProfile: &proto.NetworkProfile{
+			PublicIPAssigned: false,
+		},
+		ScalingProfile: &proto.ScalingProfile{
+			DesiredSize: 1,
+			MaxSize:     10,
+			// 释放模式
+			ScalingMode: "Delete",
+		},
+	}
 }
 
 // GetNodesInGroup 从云上拉取该节点池的所有节点 - get all nodes belong to NodeGroup
