@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"sync"
 
@@ -296,7 +297,7 @@ func getCloudCluster(cloudID string, opt *cloudprovider.CommonOption) (*tke.Clus
 }
 
 // checkClusterOsNameInWhiteImages check cluster osName if it is white image osName
-func checkClusterOsNameInWhiteImages(cls *proto.Cluster, opt *cloudprovider.CommonOption) bool {
+func checkClusterOsNameInWhiteImages(cls *proto.Cluster, opt *cloudprovider.CommonOption, cloudID string) bool {
 	if cls == nil {
 		blog.Errorf("checkClusterOsNameInWhiteImages failed: %v", "cluster nil")
 		return false
@@ -309,19 +310,48 @@ func checkClusterOsNameInWhiteImages(cls *proto.Cluster, opt *cloudprovider.Comm
 	}
 
 	// osName maybe is imageID
-	if osName != "" {
-		nodeMgr := &NodeManager{}
-		// GetImageInfoByImageID get image by image
-		image, errGet := nodeMgr.GetImageInfoByImageID(osName, opt)
-		if errGet != nil {
-			blog.Errorf("%s checkClusterOsNameInWhiteImages GetImageInfoByImageID failed: %v", cloudName, errGet)
-		} else {
-			osName = image.OsName
-		}
+	nodeMgr := &NodeManager{}
+	// GetImageInfoByImageID get image by image
+	image, errGet := nodeMgr.GetImageInfoByImageID(osName, opt)
+	if errGet != nil {
+		blog.Errorf("%s checkClusterOsNameInWhiteImages GetImageInfoByImageID failed: %v", cloudName, errGet)
+	} else {
+		osName = image.OsName
 	}
 
 	blog.Infof("checkClusterOsNameInWhiteImages[%s] osName[%s]", cls.ClusterID, osName)
-	return utils.StringInSlice(osName, utils.WhiteImageOsName)
+
+	var whiteImageOsName []string
+	cloudList := &options.CloudTemplateList{}
+	cloudTemplatePath := options.GetGlobalCMOptions().CloudTemplatePath
+
+	cloudBytes, err := os.ReadFile(cloudTemplatePath)
+	if err != nil {
+		blog.Errorf("checkClusterOsNameInWhiteImages readFile[%s] failed: %v", cloudTemplatePath, err)
+		whiteImageOsName = utils.WhiteImageOsName
+	}
+
+	err = json.Unmarshal(cloudBytes, cloudList)
+	if err != nil {
+		blog.Errorf("checkClusterOsNameInWhiteImages Unmarshal err: %v", err)
+		whiteImageOsName = utils.WhiteImageOsName
+	}
+
+	for _, cloud := range cloudList.CloudList {
+		if cloud.CloudID == cloudID {
+			whiteImageOsName = cloud.ConfInfo.WhiteImageOsName
+			blog.Infof("checkClusterOsNameInWhiteImages find widteImageOsName for cloudID[%s]", cloudID)
+			break
+		}
+	}
+
+	if len(whiteImageOsName) == 0 {
+		whiteImageOsName = utils.WhiteImageOsName
+	}
+
+	blog.Infof("checkClusterOsNameInWhiteImages whiteImageOsName: %v", whiteImageOsName)
+
+	return utils.StringInSlice(osName, whiteImageOsName)
 }
 
 // checkIfWhiteImageOsNames check cluster osName if it is white image osName

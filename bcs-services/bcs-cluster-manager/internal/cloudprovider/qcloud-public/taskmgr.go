@@ -188,7 +188,7 @@ func (t *Task) BuildCreateClusterTask(cls *proto.Cluster, opt *cloudprovider.Cre
 		Passwd:     cls.GetNodeSettings().GetWorkerLogin().GetInitLoginPassword(),
 		KeyInfo:    cls.GetNodeSettings().GetWorkerLogin().GetKeyPair(),
 		Port: func() string {
-			exist := checkClusterOsNameInWhiteImages(cls, &opt.CommonOption)
+			exist := checkClusterOsNameInWhiteImages(cls, &opt.CommonOption, opt.Cloud.CloudID)
 			if exist {
 				return fmt.Sprintf("%v", utils.ConnectPort)
 			}

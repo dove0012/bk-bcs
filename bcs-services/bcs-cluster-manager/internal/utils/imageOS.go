@@ -20,7 +20,7 @@ import (
 var (
 	// WhiteImageOsName white images os names
 	WhiteImageOsName = []string{"Tencent tlinux release 2.2 (Final)", "tlinux2.2(tkernel3)x86_64",
-		"tlinux3.2x86_64", "tlinux2.6(tkernel4)x86_64"}
+		"tlinux3.2x86_64", "tlinux2.6(tkernel4)x86_64", "TencentOS Server 2.6 (TK4)"}
 )
 
 var (
