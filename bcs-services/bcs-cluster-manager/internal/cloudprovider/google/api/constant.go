@@ -95,3 +95,10 @@ const (
 	// GKEClusterType for GKE cluster type
 	GKEClusterType = "clusterType"
 )
+
+const (
+	CloudMasterVers   = "masterVers"
+	CloudNodeVers     = "nodeVers"
+	CloudCurMasterVer = "curMasterVer"
+	CloudCurNodeVer   = "curNodeVer"
+)

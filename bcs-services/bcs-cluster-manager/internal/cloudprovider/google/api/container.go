@@ -243,3 +243,26 @@ func (cs *ContainerServiceClient) GetGKEOperation(ctx context.Context, operation
 
 	return op, nil
 }
+
+// GetUpgradeVersions get upgrade versions for the cluster
+func (cs *ContainerServiceClient) GetUpgradeVersions(ctx context.Context, clusterName string) (*container.ServerConfig, error) {
+	clusterLevel := cs.getClusterLevel()
+
+	var (
+		conf *container.ServerConfig
+		err  error
+	)
+
+	switch clusterLevel {
+	case RegionLevel:
+		parent := "projects/" + cs.gkeProjectID + "/locations/" + cs.region
+		conf, err = cs.containerServiceClient.Projects.Locations.GetServerConfig(parent).Context(ctx).Do()
+	case ZoneLevel:
+		conf, err = cs.containerServiceClient.Projects.Zones.GetServerconfig(cs.gkeProjectID, cs.region).Do()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("gke client GetUpgradeVersions failed: %v", err)
+	}
+
+	return conf, nil
+}

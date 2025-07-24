@@ -152,6 +152,18 @@ func (c *Cluster) GetCluster(cloudID string, opt *cloudprovider.GetClusterOption
 		return nil, err
 	}
 
+	curMasterVer, masterVers, curNodeVer, nodeVers, err := business.GetUpgradeVersions(opt.Cluster.SystemID, &opt.CommonOption)
+	if err != nil {
+		blog.Errorf("get upgrade versions for cluster %s failed, %s", opt.Cluster.ClusterName, err)
+		return nil, err
+	}
+
+	opt.Cluster.CloudVersions = make(map[string]*proto.UpgradeVersion)
+	opt.Cluster.CloudVersions[api.CloudMasterVers] = &proto.UpgradeVersion{Version: masterVers}
+	opt.Cluster.CloudVersions[api.CloudNodeVers] = &proto.UpgradeVersion{Version: nodeVers}
+	opt.Cluster.CloudVersions[api.CloudCurMasterVer] = &proto.UpgradeVersion{Version: []string{curMasterVer}}
+	opt.Cluster.CloudVersions[api.CloudCurNodeVer] = &proto.UpgradeVersion{Version: []string{curNodeVer}}
+
 	if opt.Cluster.ClusterAdvanceSettings == nil {
 		opt.Cluster.ClusterAdvanceSettings = &proto.ClusterAdvanceSetting{}
 	}

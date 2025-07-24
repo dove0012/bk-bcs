@@ -1845,6 +1845,14 @@ message Cluster {
     title: "sharedRanges",
     description: "共享集群可见范围设置(当is_shared为true时且sharedRanges为空时,共享平台所有项目；sharedRanges不为空时,共享给某些业务或者项目，共享项目只有使用权限)"
   }];
+  map<string, UpgradeVersion> cloudVersions = 45[(grpc.gateway.protoc_gen_swagger.options.openapiv2_field) = {
+    title: "cloudVersions",
+    description: "云集群版本可用版本信息"
+  }];
+}
+
+message UpgradeVersion {
+  repeated string version = 1;
 }
 
 message SharedClusterRanges {
