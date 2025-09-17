@@ -155,6 +155,9 @@ func (c *Configuration) ReadFrom(content []byte) error {
 	if c.Base.SystemID == "" {
 		c.Base.SystemID = BK_SYSTEM_ID
 	}
+	if c.Base.BindAddress == "" {
+		c.Base.BindAddress = POD_IP
+	}
 	if c.Redis.Password == "" {
 		c.Redis.Password = REDIS_PASSWORD
 	}
